@@ -1,0 +1,15 @@
+{
+  "name": "bhop-replay-viewer-wasm",
+  "type": "module",
+  "version": "0.1.0",
+  "files": [
+    "bhop_replay_viewer_wasm_bg.wasm",
+    "bhop_replay_viewer_wasm.js",
+    "bhop_replay_viewer_wasm.d.ts"
+  ],
+  "main": "bhop_replay_viewer_wasm.js",
+  "types": "bhop_replay_viewer_wasm.d.ts",
+  "sideEffects": [
+    "./snippets/*"
+  ]
+}
