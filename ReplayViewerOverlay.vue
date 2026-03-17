@@ -428,7 +428,8 @@ function startRenderLoop() {
     playbackEngine.update(dt);
     camera.update(dt, playbackEngine.state);
     renderer.updateAnimations(now / 1000);
-    renderer.render(camera.viewMatrix, playbackEngine.state.position, camera.isFreecam);
+    const camPos = camera.getPosition();
+    renderer.render(camera.viewMatrix, playbackEngine.state.position, camPos, camera.isFreecam);
 
     // Update reactive state for Vue components
     playbackState.value = { ...playbackEngine.state };

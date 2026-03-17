@@ -670,7 +670,7 @@ export class Renderer {
     mat4.perspective(this.projMatrix, 75 * Math.PI / 180, w / h, 1, 65536);
   }
 
-  render(viewMatrix: mat4, playerPos: Float32Array, showPlayer: boolean = true): void {
+  render(viewMatrix: mat4, playerPos: Float32Array, cameraPos: Float32Array, showPlayer: boolean = true): void {
     const gl = this.gl;
     this.resize();
     let drawCalls = 0;
@@ -737,7 +737,7 @@ export class Renderer {
     gl.useProgram(this.mapProgram);
     gl.uniformMatrix4fv(this.uProjection, false, this.projMatrix);
     gl.uniformMatrix4fv(this.uView, false, viewMatrix);
-    gl.uniform3f(this.uCameraPos, playerPos[0], playerPos[1], playerPos[2]);
+    gl.uniform3f(this.uCameraPos, cameraPos[0], cameraPos[1], cameraPos[2]);
     gl.uniform1f(this.uTime, performance.now() / 1000.0);
 
     // Bind lightmap on unit 0
@@ -771,7 +771,7 @@ export class Renderer {
 
     // PVS-based rendering with proper pass ordering
     if (this.bspMesh && this.modelDrawRanges.length > 0) {
-      const camCluster = this.bspMesh.find_cluster(playerPos[0], playerPos[1], playerPos[2]);
+      const camCluster = this.bspMesh.find_cluster(cameraPos[0], cameraPos[1], cameraPos[2]);
 
       // 1. Opaque pass: no blending, depth writes ON
       gl.disable(gl.BLEND);
@@ -793,7 +793,7 @@ export class Renderer {
         gl.depthMask(false);
         gl.uniform1f(this.uAlphaOverride, 1.0);
         gl.uniform1f(this.uIsWater, 0.0);
-        this.sortTranslucentRanges(playerPos[0], playerPos[1], playerPos[2]);
+        this.sortTranslucentRanges(cameraPos[0], cameraPos[1], cameraPos[2]);
         for (let i = 0; i < this.translucentDrawRanges.length; i++) {
           const m = this.translucentDrawRanges[i];
           if (m.indexCount === 0) continue;
