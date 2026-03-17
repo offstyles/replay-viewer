@@ -205,6 +205,34 @@ export class BspMesh {
         return ret >>> 0;
     }
     /**
+     * Per-range center coords [cx, cy, cz] for back-to-front sorting
+     * @returns {Float32Array}
+     */
+    translucent_centers() {
+        const ret = wasm.bspmesh_translucent_centers(this.__wbg_ptr);
+        var v1 = getArrayF32FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
+        return v1;
+    }
+    /**
+     * Number of translucent draw ranges
+     * @returns {number}
+     */
+    translucent_draw_count() {
+        const ret = wasm.bspmesh_translucent_draw_count(this.__wbg_ptr);
+        return ret >>> 0;
+    }
+    /**
+     * Translucent draw ranges: same format, for translucent faces
+     * @returns {Int32Array}
+     */
+    translucent_draw_data() {
+        const ret = wasm.bspmesh_translucent_draw_data(this.__wbg_ptr);
+        var v1 = getArrayI32FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
+        return v1;
+    }
+    /**
      * JSON array of unresolved texture info: [{name, atlas_x, atlas_y, width, height, pad}, ...]
      * @returns {string}
      */

@@ -51,6 +51,18 @@ export class BspMesh {
     texture_atlas_height(): number;
     texture_atlas_width(): number;
     /**
+     * Per-range center coords [cx, cy, cz] for back-to-front sorting
+     */
+    translucent_centers(): Float32Array;
+    /**
+     * Number of translucent draw ranges
+     */
+    translucent_draw_count(): number;
+    /**
+     * Translucent draw ranges: same format, for translucent faces
+     */
+    translucent_draw_data(): Int32Array;
+    /**
      * JSON array of unresolved texture info: [{name, atlas_x, atlas_y, width, height, pad}, ...]
      */
     unresolved_textures(): string;
@@ -138,6 +150,9 @@ export interface InitOutput {
     readonly bspmesh_texture_atlas_data: (a: number) => [number, number];
     readonly bspmesh_texture_atlas_height: (a: number) => number;
     readonly bspmesh_texture_atlas_width: (a: number) => number;
+    readonly bspmesh_translucent_centers: (a: number) => [number, number];
+    readonly bspmesh_translucent_draw_count: (a: number) => number;
+    readonly bspmesh_translucent_draw_data: (a: number) => [number, number];
     readonly bspmesh_unresolved_textures: (a: number) => [number, number];
     readonly bspmesh_vertex_count: (a: number) => number;
     readonly bspmesh_vertex_data: (a: number) => [number, number];

@@ -109,9 +109,9 @@ void main() {
   vec2 atlasUV = vAtlasMin + tiledUV * vAtlasScale;
   vec4 texColor = texture2DGradEXT(uTexture, atlasUV, rawDdx, rawDdy);
 
-  // Alpha test: discard nearly transparent fragments (cutout textures like fences, grates)
+  // Alpha test: discard transparent fragments (cutout textures like fences, grates)
   float alpha = mix(1.0, texColor.a, hasTex);
-  if (alpha < 0.1) discard;
+  if (alpha < 0.5) discard;
 
   // Debug mode 1: raw texture only (no lightmap, no gamma)
   if (uDebugMode > 0.5) {
@@ -316,6 +316,15 @@ interface ModelDrawRange {
   cluster: number;
 }
 
+interface TranslucentDrawRange {
+  indexStart: number;
+  indexCount: number;
+  cluster: number;
+  centerX: number;
+  centerY: number;
+  centerZ: number;
+}
+
 export class Renderer {
   private gl: WebGLRenderingContext;
   private mapProgram: WebGLProgram;
@@ -375,6 +384,7 @@ export class Renderer {
   private bspMesh: BspMesh | null = null;
   private modelDrawRanges: ModelDrawRange[] = [];
   private waterDrawRanges: ModelDrawRange[] = [];
+  private translucentDrawRanges: TranslucentDrawRange[] = [];
 
   // Animated textures
   private animTextures: { atlasX: number; atlasY: number; width: number; height: number; frameCount: number; fps: number; dataOffset: number; currentFrame: number }[] = [];
@@ -462,8 +472,9 @@ export class Renderer {
 
   setPVS(mesh: BspMesh): void {
     this.bspMesh = mesh;
+    // NOTE: call data() before count() — data() uses std::mem::take which empties the vec
     const drawData = mesh.model_draw_data();
-    const count = mesh.model_draw_count();
+    const count = drawData.length / 3;
     this.modelDrawRanges = [];
     for (let i = 0; i < count; i++) {
       this.modelDrawRanges.push({
@@ -474,13 +485,28 @@ export class Renderer {
     }
     // Water draw ranges (rendered separately with transparency)
     const waterData = mesh.water_draw_data();
-    const waterCount = mesh.water_draw_count();
+    const waterCount = waterData.length / 3;
     this.waterDrawRanges = [];
     for (let i = 0; i < waterCount; i++) {
       this.waterDrawRanges.push({
         indexStart: waterData[i * 3],
         indexCount: waterData[i * 3 + 1],
         cluster: waterData[i * 3 + 2],
+      });
+    }
+    // Translucent draw ranges (rendered after opaque, no depth write, back-to-front sorted)
+    const transData = mesh.translucent_draw_data();
+    const transCount = transData.length / 3;
+    const transCenters = mesh.translucent_centers();
+    this.translucentDrawRanges = [];
+    for (let i = 0; i < transCount; i++) {
+      this.translucentDrawRanges.push({
+        indexStart: transData[i * 3],
+        indexCount: transData[i * 3 + 1],
+        cluster: transData[i * 3 + 2],
+        centerX: transCenters[i * 3],
+        centerY: transCenters[i * 3 + 1],
+        centerZ: transCenters[i * 3 + 2],
       });
     }
   }
@@ -703,11 +729,7 @@ export class Renderer {
 
     if (this.indexCount === 0) return;
 
-    // Enable alpha blending for transparent textures (fences, grates, glass, etc.)
-    gl.enable(gl.BLEND);
-    gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
-
-    // Draw map
+    // Setup map shader (shared across opaque, translucent, and water passes)
     gl.useProgram(this.mapProgram);
     gl.uniformMatrix4fv(this.uProjection, false, this.projMatrix);
     gl.uniformMatrix4fv(this.uView, false, viewMatrix);
@@ -743,21 +765,44 @@ export class Renderer {
 
     gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.mapIBO);
 
-    // PVS-based per-cluster draw calls (opaque geometry)
+    // PVS-based rendering with proper pass ordering
     if (this.bspMesh && this.modelDrawRanges.length > 0) {
-      gl.uniform1f(this.uIsWater, 0.0);
       const camCluster = this.bspMesh.find_cluster(playerPos[0], playerPos[1], playerPos[2]);
+
+      // 1. Opaque pass: no blending, depth writes ON
+      gl.disable(gl.BLEND);
+      gl.depthMask(true);
+      gl.uniform1f(this.uIsWater, 0.0);
       for (let i = 0; i < this.modelDrawRanges.length; i++) {
         const m = this.modelDrawRanges[i];
         if (m.indexCount === 0) continue;
-        // cluster -1 = unknown, always draw; otherwise PVS check
         if (m.cluster < 0 || this.bspMesh.is_cluster_visible(camCluster, m.cluster)) {
           gl.drawElements(gl.TRIANGLES, m.indexCount, gl.UNSIGNED_INT, m.indexStart * 4);
         }
       }
 
-      // Water pass: render with transparency, no depth write
+      // 2. Translucent pass: blending ON, depth writes OFF, back-to-front sorted
+      if (this.translucentDrawRanges.length > 0) {
+        gl.enable(gl.BLEND);
+        gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+        gl.depthMask(false);
+        gl.uniform1f(this.uAlphaOverride, 1.0);
+        gl.uniform1f(this.uIsWater, 0.0);
+        this.sortTranslucentRanges(playerPos[0], playerPos[1], playerPos[2]);
+        for (let i = 0; i < this.translucentDrawRanges.length; i++) {
+          const m = this.translucentDrawRanges[i];
+          if (m.indexCount === 0) continue;
+          if (m.cluster < 0 || this.bspMesh.is_cluster_visible(camCluster, m.cluster)) {
+            gl.drawElements(gl.TRIANGLES, m.indexCount, gl.UNSIGNED_INT, m.indexStart * 4);
+          }
+        }
+        gl.depthMask(true);
+      }
+
+      // 3. Water pass: blending ON, depth writes OFF
       if (this.waterDrawRanges.length > 0) {
+        gl.enable(gl.BLEND);
+        gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
         gl.depthMask(false);
         gl.uniform1f(this.uAlphaOverride, 0.6);
         gl.uniform1f(this.uIsWater, 1.0);
@@ -773,6 +818,7 @@ export class Renderer {
         gl.uniform1f(this.uIsWater, 0.0);
       }
     } else {
+      gl.disable(gl.BLEND);
       gl.uniform1f(this.uIsWater, 0.0);
       gl.drawElements(gl.TRIANGLES, this.indexCount, gl.UNSIGNED_INT, 0);
     }
@@ -783,7 +829,7 @@ export class Renderer {
     gl.disableVertexAttribArray(this.aAtlasMin);
     gl.disableVertexAttribArray(this.aAtlasScale);
 
-    // Disable blending for subsequent draws (player cube, etc.)
+    // Ensure blending is disabled for subsequent draws (player cube, etc.)
     gl.disable(gl.BLEND);
 
     // Draw player cube (only in freecam)
@@ -808,6 +854,14 @@ export class Renderer {
 
       gl.disableVertexAttribArray(pPos);
     }
+  }
+
+  private sortTranslucentRanges(camX: number, camY: number, camZ: number): void {
+    this.translucentDrawRanges.sort((a, b) => {
+      const da = (a.centerX - camX) ** 2 + (a.centerY - camY) ** 2 + (a.centerZ - camZ) ** 2;
+      const db = (b.centerX - camX) ** 2 + (b.centerY - camY) ** 2 + (b.centerZ - camZ) ** 2;
+      return db - da; // far to near
+    });
   }
 
   dispose(): void {
