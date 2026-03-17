@@ -74,9 +74,9 @@ export class Camera {
   }
 
   private updateFollowCam(state: PlaybackState): void {
-    const px = state.position[0];
-    const py = state.position[1];
-    const pz = state.position[2] + state.eyeHeight;
+    this.pos[0] = state.position[0];
+    this.pos[1] = state.position[1];
+    this.pos[2] = state.position[2] + state.eyeHeight;
 
     // Source Engine angles: yaw is angles[1], pitch is angles[0]
     const yaw = state.angles[1] * Math.PI / 180;
@@ -89,8 +89,8 @@ export class Camera {
 
     mat4.lookAt(
       this.viewMatrix,
-      [px, py, pz],
-      [px + fx, py + fy, pz + fz],
+      this.pos as unknown as vec3,
+      [this.pos[0] + fx, this.pos[1] + fy, this.pos[2] + fz],
       [0, 0, 1],
     );
   }
