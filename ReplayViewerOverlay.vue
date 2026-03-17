@@ -3,6 +3,7 @@ import { ref, watch, onUnmounted, nextTick, shallowRef } from "vue";
 import LoadingModal from "./LoadingModal.vue";
 import ViewerHUD from "./ViewerHUD.vue";
 import ViewerControls from "./ViewerControls.vue";
+import StatsOverlay from "./StatsOverlay.vue";
 import { Renderer } from "./renderer";
 import { PlaybackEngine, type PlaybackState } from "./playback";
 import { Camera } from "./camera";
@@ -58,6 +59,11 @@ const playbackState = shallowRef<PlaybackState>({
   time: 0,
 });
 const isFreecam = ref(false);
+const showStats = ref(false);
+const statsFps = ref(0);
+const statsFrameTime = ref(0);
+const statsDrawCalls = ref(0);
+const statsTriangles = ref(0);
 
 // Expose non-reactive refs for ViewerControls
 const playbackRef = shallowRef<PlaybackEngine | null>(null);
@@ -428,6 +434,13 @@ function startRenderLoop() {
     playbackState.value = { ...playbackEngine.state };
     isFreecam.value = camera.isFreecam;
 
+    if (showStats.value && renderer) {
+      statsFrameTime.value = dt * 1000;
+      statsFps.value = Math.round(1 / dt);
+      statsDrawCalls.value = renderer.lastDrawCalls;
+      statsTriangles.value = renderer.lastTriangles;
+    }
+
     // Update controls scrubber
     controlsRef.value?.updateScrubber();
 
@@ -492,6 +505,16 @@ function close() {
       :playback="playbackRef"
       :camera="cameraRef"
       @close="close"
+      @toggle-stats="showStats = !showStats"
+    />
+
+    <!-- Stats overlay -->
+    <StatsOverlay
+      v-if="!isLoading && !errorMessage && showStats"
+      :fps="statsFps"
+      :frame-time="statsFrameTime"
+      :draw-calls="statsDrawCalls"
+      :triangles="statsTriangles"
     />
   </div>
 </template>

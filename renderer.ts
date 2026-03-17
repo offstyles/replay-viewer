@@ -356,6 +356,8 @@ export class Renderer {
   private atlasWidth = 0;
   private atlasHeight = 0;
   public debugTexMode = false;
+  public lastDrawCalls = 0;
+  public lastTriangles = 0;
 
   // Player uniforms
   private puProjection: WebGLUniformLocation;
@@ -665,12 +667,14 @@ export class Renderer {
       canvas.height = h;
     }
     this.gl.viewport(0, 0, canvas.width, canvas.height);
-    mat4.perspective(this.projMatrix, 80 * Math.PI / 180, w / h, 1, 65536);
+    mat4.perspective(this.projMatrix, 75 * Math.PI / 180, w / h, 1, 65536);
   }
 
   render(viewMatrix: mat4, playerPos: Float32Array, showPlayer: boolean = true): void {
     const gl = this.gl;
     this.resize();
+    let drawCalls = 0;
+    let triangles = 0;
 
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
@@ -778,6 +782,7 @@ export class Renderer {
         if (m.indexCount === 0) continue;
         if (m.cluster < 0 || this.bspMesh.is_cluster_visible(camCluster, m.cluster)) {
           gl.drawElements(gl.TRIANGLES, m.indexCount, gl.UNSIGNED_INT, m.indexStart * 4);
+          drawCalls++; triangles += m.indexCount / 3;
         }
       }
 
@@ -794,6 +799,7 @@ export class Renderer {
           if (m.indexCount === 0) continue;
           if (m.cluster < 0 || this.bspMesh.is_cluster_visible(camCluster, m.cluster)) {
             gl.drawElements(gl.TRIANGLES, m.indexCount, gl.UNSIGNED_INT, m.indexStart * 4);
+            drawCalls++; triangles += m.indexCount / 3;
           }
         }
         gl.depthMask(true);
@@ -811,6 +817,7 @@ export class Renderer {
           if (m.indexCount === 0) continue;
           if (m.cluster < 0 || this.bspMesh.is_cluster_visible(camCluster, m.cluster)) {
             gl.drawElements(gl.TRIANGLES, m.indexCount, gl.UNSIGNED_INT, m.indexStart * 4);
+            drawCalls++; triangles += m.indexCount / 3;
           }
         }
         gl.depthMask(true);
@@ -821,6 +828,7 @@ export class Renderer {
       gl.disable(gl.BLEND);
       gl.uniform1f(this.uIsWater, 0.0);
       gl.drawElements(gl.TRIANGLES, this.indexCount, gl.UNSIGNED_INT, 0);
+      drawCalls++; triangles += this.indexCount / 3;
     }
 
     gl.disableVertexAttribArray(this.aNorm);
@@ -828,6 +836,10 @@ export class Renderer {
     gl.disableVertexAttribArray(this.aTexUV);
     gl.disableVertexAttribArray(this.aAtlasMin);
     gl.disableVertexAttribArray(this.aAtlasScale);
+
+    // Store render stats
+    this.lastDrawCalls = drawCalls;
+    this.lastTriangles = triangles;
 
     // Ensure blending is disabled for subsequent draws (player cube, etc.)
     gl.disable(gl.BLEND);
