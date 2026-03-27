@@ -171,10 +171,10 @@ export interface InitOutput {
     readonly replaydata_tick_count: (a: number) => number;
     readonly replaydata_tick_rate: (a: number) => number;
     readonly replaydata_time: (a: number) => number;
+    readonly decompress_bz2: (a: number, b: number) => [number, number, number, number];
     readonly decode_and_tile_vtf: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number) => [number, number];
     readonly init: () => void;
     readonly parse_vmt_data: (a: number, b: number) => [number, number];
-    readonly decompress_bz2: (a: number, b: number) => [number, number, number, number];
     readonly __wbindgen_free: (a: number, b: number, c: number) => void;
     readonly __wbindgen_malloc: (a: number, b: number) => number;
     readonly __wbindgen_realloc: (a: number, b: number, c: number, d: number) => number;
