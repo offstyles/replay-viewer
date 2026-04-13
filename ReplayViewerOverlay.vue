@@ -23,8 +23,7 @@ const props = defineProps<{
 
 const emit = defineEmits(["close"]);
 
-// Other API calls use relative path in dev (goes through Vite proxy to prod)
-const apiBaseUrl = import.meta.env.DEV ? "/api" : "https://offstyles.tommyy.dev/api";
+const apiBaseUrl = "/api";
 
 // State
 const isLoading = ref(true);
