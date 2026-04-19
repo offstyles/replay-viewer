@@ -10,13 +10,6 @@ const props = defineProps<{
 
 const speed = computed(() => Math.round(props.state.speed).toString())
 
-const timeDisplay = computed(() => {
-  const elapsed = props.state.tick / props.state.tickRate
-  const mins = Math.floor(elapsed / 60)
-  const secs = elapsed - mins * 60
-  return `${mins}:${secs < 10 ? '0' : ''}${secs.toFixed(2)}`
-})
-
 function isPressed(flag: number): boolean {
   return (props.state.buttons & flag) !== 0
 }
@@ -29,26 +22,16 @@ function isPressed(flag: number): boolean {
       {{ isFreecam ? 'Freecam' : 'Follow Cam' }}
     </div>
 
-    <!-- Time -->
-    <div class="absolute top-4 right-5 text-lg drop-shadow-lg">
-      {{ timeDisplay }}
-    </div>
-
     <!-- Speed (centered above key display) -->
-    <div class="absolute bottom-24 left-1/2 -translate-x-1/2 text-3xl font-bold drop-shadow-lg tabular-nums">
-      {{ speed }}
-      <span class="text-sm font-normal text-gray-400 ml-0.5">u/s</span>
+    <div class="absolute bottom-24 left-1/2 -translate-x-1/2 drop-shadow-lg tabular-nums">
+      <div class="relative text-xl font-bold leading-none">
+        {{ speed }}
+        <span class="absolute left-full top-1/2 -translate-y-1/2 ml-1 text-xs font-normal text-gray-400">u/s</span>
+      </div>
     </div>
 
     <!-- Key display: ShavitTimer-style layout -->
     <div class="absolute bottom-[88px] left-2 key-panel">
-      <!-- Speed + Sync row -->
-      <div class="flex gap-[3px] mb-[3px]">
-        <div class="key-stat flex-1">
-          Speed
-          <span class="text-white">{{ speed }}</span>
-        </div>
-      </div>
       <!-- Duck + W row -->
       <div class="flex gap-[3px] mb-[3px]">
         <div class="key-box key-wide" :class="{ active: isPressed(IN_DUCK) }">Duck</div>
@@ -75,21 +58,6 @@ function isPressed(flag: number): boolean {
   padding: 6px;
   border-radius: 6px;
   width: 204px;
-}
-
-.key-stat {
-  height: 32px;
-  line-height: 32px;
-  text-align: center;
-  font-size: 10px;
-  color: hsl(240, 4%, 50%);
-  background: rgba(0, 0, 0, 0.5);
-  border-radius: 3px;
-  padding: 0 8px;
-}
-.key-stat span {
-  font-size: 12px;
-  margin-left: 4px;
 }
 
 .key-box {
