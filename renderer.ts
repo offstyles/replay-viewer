@@ -31,9 +31,35 @@ void main() {
 }
 `;
 
-const MAP_FRAG = `
+// Fragment shader source. `hasShaderLod` toggles gradient-clamped atlas
+// sampling via EXT_shader_texture_lod; without it we fall back to plain
+// texture2D (the atlas is then uploaded without mipmaps to avoid tile bleeding).
+function mapFragSource(hasShaderLod: boolean): string {
+  const extLine = hasShaderLod ? '#extension GL_EXT_shader_texture_lod : enable' : '';
+  const sampleAtlas = hasShaderLod
+    ? `
+  vec2 rawDdx = dFdx(baseTexUV) * vAtlasScale;
+  vec2 rawDdy = dFdy(baseTexUV) * vAtlasScale;
+
+  // Clamp gradients so mip level never exceeds padding coverage
+  float maxGrad = MAX_SAFE_TEXELS / max(uAtlasSize.x, uAtlasSize.y);
+  float gradLen = max(length(rawDdx), length(rawDdy));
+  if (gradLen > maxGrad) {
+    float s = maxGrad / gradLen;
+    rawDdx *= s;
+    rawDdy *= s;
+  }
+
+  vec2 tiledUV = fract(baseTexUV);
+  vec2 atlasUV = vAtlasMin + tiledUV * vAtlasScale;
+  vec4 texColor = texture2DGradEXT(uTexture, atlasUV, rawDdx, rawDdy);`
+    : `
+  vec2 tiledUV = fract(baseTexUV);
+  vec2 atlasUV = vAtlasMin + tiledUV * vAtlasScale;
+  vec4 texColor = texture2D(uTexture, atlasUV);`;
+  return `
 #extension GL_OES_standard_derivatives : enable
-#extension GL_EXT_shader_texture_lod : enable
+${extLine}
 precision mediump float;
 varying vec3 vNormal;
 varying vec2 vLightmapUV;
@@ -93,21 +119,7 @@ void main() {
     return;
   }
 
-  vec2 rawDdx = dFdx(baseTexUV) * vAtlasScale;
-  vec2 rawDdy = dFdy(baseTexUV) * vAtlasScale;
-
-  // Clamp gradients so mip level never exceeds padding coverage
-  float maxGrad = MAX_SAFE_TEXELS / max(uAtlasSize.x, uAtlasSize.y);
-  float gradLen = max(length(rawDdx), length(rawDdy));
-  if (gradLen > maxGrad) {
-    float s = maxGrad / gradLen;
-    rawDdx *= s;
-    rawDdy *= s;
-  }
-
-  vec2 tiledUV = fract(baseTexUV);
-  vec2 atlasUV = vAtlasMin + tiledUV * vAtlasScale;
-  vec4 texColor = texture2DGradEXT(uTexture, atlasUV, rawDdx, rawDdy);
+${sampleAtlas}
 
   // Alpha test: discard transparent fragments (cutout textures like fences, grates)
   float alpha = mix(1.0, texColor.a, hasTex);
@@ -149,6 +161,7 @@ void main() {
   gl_FragColor = vec4(color, alpha * uAlphaOverride);
 }
 `;
+}
 
 const PLAYER_VERT = `
 attribute vec3 aPosition;
@@ -339,6 +352,7 @@ export class Renderer {
   private baseTexture: WebGLTexture | null = null;
   private anisoExt: any = null;
   private maxAnisotropy = 1;
+  private hasShaderLod = false;
 
   // Map uniforms
   private uProjection: WebGLUniformLocation;
@@ -410,7 +424,7 @@ export class Renderer {
 
     gl.getExtension('OES_element_index_uint');
     gl.getExtension('OES_standard_derivatives');
-    gl.getExtension('EXT_shader_texture_lod');
+    this.hasShaderLod = !!gl.getExtension('EXT_shader_texture_lod');
     this.anisoExt = gl.getExtension('EXT_texture_filter_anisotropic')
       || gl.getExtension('WEBKIT_EXT_texture_filter_anisotropic')
       || gl.getExtension('MOZ_EXT_texture_filter_anisotropic');
@@ -422,7 +436,7 @@ export class Renderer {
     gl.clearColor(0.1, 0.1, 0.18, 1.0);
 
     // Map shader
-    this.mapProgram = createProgram(gl, MAP_VERT, MAP_FRAG);
+    this.mapProgram = createProgram(gl, MAP_VERT, mapFragSource(this.hasShaderLod));
     this.uProjection = gl.getUniformLocation(this.mapProgram, 'uProjection')!;
     this.uView = gl.getUniformLocation(this.mapProgram, 'uView')!;
     this.uLightmap = gl.getUniformLocation(this.mapProgram, 'uLightmap')!;
@@ -554,7 +568,7 @@ export class Renderer {
       gl.texSubImage2D(gl.TEXTURE_2D, 0, anim.atlasX, anim.atlasY, anim.width, anim.height, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
       updated++;
     }
-    if (updated > 0) {
+    if (updated > 0 && this.hasShaderLod) {
       gl.generateMipmap(gl.TEXTURE_2D);
     }
   }
@@ -577,12 +591,18 @@ export class Renderer {
     this.baseTexture = gl.createTexture()!;
     gl.bindTexture(gl.TEXTURE_2D, this.baseTexture);
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, width, height, 0, gl.RGBA, gl.UNSIGNED_BYTE, data);
-    gl.generateMipmap(gl.TEXTURE_2D);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+    if (this.hasShaderLod) {
+      gl.generateMipmap(gl.TEXTURE_2D);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+    } else {
+      // Without texture2DGradEXT we can't clamp mip level per-fragment, which
+      // causes atlas-tile bleeding at distance. Disable mips as a tradeoff.
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    }
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-    if (this.anisoExt) {
+    if (this.anisoExt && this.hasShaderLod) {
       gl.texParameterf(gl.TEXTURE_2D, this.anisoExt.TEXTURE_MAX_ANISOTROPY_EXT, this.maxAnisotropy);
     }
   }
@@ -592,7 +612,7 @@ export class Renderer {
     const gl = this.gl;
     gl.bindTexture(gl.TEXTURE_2D, this.baseTexture);
     gl.texSubImage2D(gl.TEXTURE_2D, 0, x, y, width, height, gl.RGBA, gl.UNSIGNED_BYTE, data);
-    gl.generateMipmap(gl.TEXTURE_2D);
+    if (this.hasShaderLod) gl.generateMipmap(gl.TEXTURE_2D);
   }
 
   uploadSkybox(data: Uint8Array, faceSize: number): void {
