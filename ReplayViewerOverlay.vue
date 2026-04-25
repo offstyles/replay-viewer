@@ -255,6 +255,65 @@ async function initViewer() {
     const skyData = mesh.skybox_data();
     const skyFace = mesh.skybox_face_size();
     renderer.uploadSkybox(skyData, skyFace);
+  } else {
+    // Skybox VTFs aren't in the BSP pakfile — fetch from VPK.
+    // Common case: maps reference stock CS:S/HL2 skies (sky_dust, militia_hdr, ...).
+    const skyName = mesh.skybox_name();
+    if (skyName) {
+      stepLabel.value = "Loading skybox...";
+      await waitForNextPaint();
+      const SKY_SUFFIXES = ["ft", "bk", "lf", "rt", "up", "dn"] as const;
+      const texApiBase = `${apiBaseUrl}/csspak`;
+      const faceBytes = await Promise.all(
+        SKY_SUFFIXES.map(async (suffix) => {
+          const matName = `skybox/${skyName}${suffix}`;
+          let vtfPath = matName;
+          try {
+            const vmtResp = await fetch(`${texApiBase}/materials/${matName}.vmt`);
+            if (vmtResp.ok) {
+              const vmtBytes = new Uint8Array(await vmtResp.arrayBuffer());
+              const vmtJson = wasm.parse_vmt_data(vmtBytes);
+              if (vmtJson) {
+                const vmtInfo = JSON.parse(vmtJson);
+                if (vmtInfo.basetexture) vtfPath = vmtInfo.basetexture;
+              }
+            }
+          } catch { /* fall through to VTF fetch */ }
+          try {
+            const vtfResp = await fetch(`${texApiBase}/materials/${vtfPath}.vtf`);
+            if (!vtfResp.ok) return null;
+            return new Uint8Array(await vtfResp.arrayBuffer());
+          } catch {
+            return null;
+          }
+        }),
+      );
+
+      // Concat all 6 buffers into one with offset/length arrays for WASM
+      const lengths = faceBytes.map((b) => (b ? b.length : 0));
+      const offsets: number[] = [];
+      let total = 0;
+      for (const len of lengths) {
+        offsets.push(total);
+        total += len;
+      }
+      if (total > 0) {
+        const concat = new Uint8Array(total);
+        for (let i = 0; i < 6; i++) {
+          const b = faceBytes[i];
+          if (b) concat.set(b, offsets[i]);
+        }
+        const result = wasm.build_skybox_from_vtfs(
+          concat,
+          new Uint32Array(offsets),
+          new Uint32Array(lengths),
+        );
+        if (result) {
+          renderer.uploadSkybox(result.data(), result.face_size());
+          result.free();
+        }
+      }
+    }
   }
 
   // Upload sky depth faces for occlusion

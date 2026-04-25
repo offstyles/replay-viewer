@@ -47,6 +47,11 @@ export class BspMesh {
     sky_vertex_data(): Float32Array;
     skybox_data(): Uint8Array;
     skybox_face_size(): number;
+    /**
+     * Skybox basename from worldspawn (e.g. "sky_dust", "militia_hdr"). Empty
+     * when the map has no skyname. Always set, even if faces aren't in the pakfile.
+     */
+    skybox_name(): string;
     texture_atlas_data(): Uint8Array;
     texture_atlas_height(): number;
     texture_atlas_width(): number;
@@ -95,6 +100,29 @@ export class ReplayData {
     tick_rate(): number;
     time(): number;
 }
+
+/**
+ * Cubemap data produced by `build_skybox_from_vtfs`: 6 RGBA faces concatenated.
+ */
+export class SkyboxResult {
+    private constructor();
+    free(): void;
+    [Symbol.dispose](): void;
+    data(): Uint8Array;
+    face_size(): number;
+}
+
+/**
+ * Decode 6 skybox face VTFs (fetched externally, e.g. from a CS:S VPK) into a
+ * cubemap matching what `BspMesh::skybox_data` would have produced if the VTFs
+ * had been embedded in the BSP pakfile.
+ *
+ * `face_offsets` and `face_lengths` index into `vtfs_data` and must each have
+ * length 6 in the order [ft, bk, lf, rt, up, dn]. A length of 0 means that
+ * face is missing (it's filled with opaque black so the cubemap is complete).
+ * Returns None if no faces could be decoded.
+ */
+export function build_skybox_from_vtfs(vtfs_data: Uint8Array, face_offsets: Uint32Array, face_lengths: Uint32Array): SkyboxResult | undefined;
 
 /**
  * Decode a VTF file, downscale to target dimensions, apply color tint, create tiled version with padding.
@@ -147,6 +175,7 @@ export interface InitOutput {
     readonly bspmesh_sky_vertex_data: (a: number) => [number, number];
     readonly bspmesh_skybox_data: (a: number) => [number, number];
     readonly bspmesh_skybox_face_size: (a: number) => number;
+    readonly bspmesh_skybox_name: (a: number) => [number, number];
     readonly bspmesh_texture_atlas_data: (a: number) => [number, number];
     readonly bspmesh_texture_atlas_height: (a: number) => number;
     readonly bspmesh_texture_atlas_width: (a: number) => number;
@@ -171,10 +200,14 @@ export interface InitOutput {
     readonly replaydata_tick_count: (a: number) => number;
     readonly replaydata_tick_rate: (a: number) => number;
     readonly replaydata_time: (a: number) => number;
-    readonly decompress_bz2: (a: number, b: number) => [number, number, number, number];
+    readonly __wbg_skyboxresult_free: (a: number, b: number) => void;
+    readonly build_skybox_from_vtfs: (a: number, b: number, c: number, d: number, e: number, f: number) => number;
     readonly decode_and_tile_vtf: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number) => [number, number];
     readonly init: () => void;
     readonly parse_vmt_data: (a: number, b: number) => [number, number];
+    readonly skyboxresult_data: (a: number) => [number, number];
+    readonly skyboxresult_face_size: (a: number) => number;
+    readonly decompress_bz2: (a: number, b: number) => [number, number, number, number];
     readonly __wbindgen_free: (a: number, b: number, c: number) => void;
     readonly __wbindgen_malloc: (a: number, b: number) => number;
     readonly __wbindgen_realloc: (a: number, b: number, c: number, d: number) => number;

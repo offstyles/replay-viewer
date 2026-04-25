@@ -182,6 +182,23 @@ export class BspMesh {
         return ret >>> 0;
     }
     /**
+     * Skybox basename from worldspawn (e.g. "sky_dust", "militia_hdr"). Empty
+     * when the map has no skyname. Always set, even if faces aren't in the pakfile.
+     * @returns {string}
+     */
+    skybox_name() {
+        let deferred1_0;
+        let deferred1_1;
+        try {
+            const ret = wasm.bspmesh_skybox_name(this.__wbg_ptr);
+            deferred1_0 = ret[0];
+            deferred1_1 = ret[1];
+            return getStringFromWasm0(ret[0], ret[1]);
+        } finally {
+            wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
+        }
+    }
+    /**
      * @returns {Uint8Array}
      */
     texture_atlas_data() {
@@ -387,6 +404,71 @@ export class ReplayData {
 if (Symbol.dispose) ReplayData.prototype[Symbol.dispose] = ReplayData.prototype.free;
 
 /**
+ * Cubemap data produced by `build_skybox_from_vtfs`: 6 RGBA faces concatenated.
+ */
+export class SkyboxResult {
+    static __wrap(ptr) {
+        ptr = ptr >>> 0;
+        const obj = Object.create(SkyboxResult.prototype);
+        obj.__wbg_ptr = ptr;
+        SkyboxResultFinalization.register(obj, obj.__wbg_ptr, obj);
+        return obj;
+    }
+    __destroy_into_raw() {
+        const ptr = this.__wbg_ptr;
+        this.__wbg_ptr = 0;
+        SkyboxResultFinalization.unregister(this);
+        return ptr;
+    }
+    free() {
+        const ptr = this.__destroy_into_raw();
+        wasm.__wbg_skyboxresult_free(ptr, 0);
+    }
+    /**
+     * @returns {Uint8Array}
+     */
+    data() {
+        const ret = wasm.skyboxresult_data(this.__wbg_ptr);
+        var v1 = getArrayU8FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 1, 1);
+        return v1;
+    }
+    /**
+     * @returns {number}
+     */
+    face_size() {
+        const ret = wasm.skyboxresult_face_size(this.__wbg_ptr);
+        return ret >>> 0;
+    }
+}
+if (Symbol.dispose) SkyboxResult.prototype[Symbol.dispose] = SkyboxResult.prototype.free;
+
+/**
+ * Decode 6 skybox face VTFs (fetched externally, e.g. from a CS:S VPK) into a
+ * cubemap matching what `BspMesh::skybox_data` would have produced if the VTFs
+ * had been embedded in the BSP pakfile.
+ *
+ * `face_offsets` and `face_lengths` index into `vtfs_data` and must each have
+ * length 6 in the order [ft, bk, lf, rt, up, dn]. A length of 0 means that
+ * face is missing (it's filled with opaque black so the cubemap is complete).
+ * Returns None if no faces could be decoded.
+ * @param {Uint8Array} vtfs_data
+ * @param {Uint32Array} face_offsets
+ * @param {Uint32Array} face_lengths
+ * @returns {SkyboxResult | undefined}
+ */
+export function build_skybox_from_vtfs(vtfs_data, face_offsets, face_lengths) {
+    const ptr0 = passArray8ToWasm0(vtfs_data, wasm.__wbindgen_malloc);
+    const len0 = WASM_VECTOR_LEN;
+    const ptr1 = passArray32ToWasm0(face_offsets, wasm.__wbindgen_malloc);
+    const len1 = WASM_VECTOR_LEN;
+    const ptr2 = passArray32ToWasm0(face_lengths, wasm.__wbindgen_malloc);
+    const len2 = WASM_VECTOR_LEN;
+    const ret = wasm.build_skybox_from_vtfs(ptr0, len0, ptr1, len1, ptr2, len2);
+    return ret === 0 ? undefined : SkyboxResult.__wrap(ret);
+}
+
+/**
  * Decode a VTF file, downscale to target dimensions, apply color tint, create tiled version with padding.
  * Returns RGBA data of size (target_w + 2*pad) × (target_h + 2*pad) × 4, ready for texSubImage2D.
  * When force_opaque is true, all alpha values are set to 255 (most Source textures use alpha
@@ -565,6 +647,9 @@ const BspMeshFinalization = (typeof FinalizationRegistry === 'undefined')
 const ReplayDataFinalization = (typeof FinalizationRegistry === 'undefined')
     ? { register: () => {}, unregister: () => {} }
     : new FinalizationRegistry(ptr => wasm.__wbg_replaydata_free(ptr >>> 0, 1));
+const SkyboxResultFinalization = (typeof FinalizationRegistry === 'undefined')
+    ? { register: () => {}, unregister: () => {} }
+    : new FinalizationRegistry(ptr => wasm.__wbg_skyboxresult_free(ptr >>> 0, 1));
 
 function getArrayF32FromWasm0(ptr, len) {
     ptr = ptr >>> 0;
@@ -629,6 +714,13 @@ function getUint8ArrayMemory0() {
         cachedUint8ArrayMemory0 = new Uint8Array(wasm.memory.buffer);
     }
     return cachedUint8ArrayMemory0;
+}
+
+function passArray32ToWasm0(arg, malloc) {
+    const ptr = malloc(arg.length * 4, 4) >>> 0;
+    getUint32ArrayMemory0().set(arg, ptr / 4);
+    WASM_VECTOR_LEN = arg.length;
+    return ptr;
 }
 
 function passArray8ToWasm0(arg, malloc) {
