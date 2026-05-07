@@ -8,7 +8,7 @@ const props = defineProps<{
   camera: Camera
 }>()
 
-const emit = defineEmits(['close', 'toggle-stats'])
+const emit = defineEmits(['close', 'toggle-stats', 'toggle-settings'])
 
 const isScrubbing = ref(false)
 const scrubberValue = ref(0)
@@ -196,6 +196,15 @@ defineExpose({ updateScrubber })
           title="Toggle stats (G)"
         >
           Stats <span class="text-gray-400 ml-0.5">G</span>
+        </button>
+
+        <!-- Settings toggle -->
+        <button
+          @click="$emit('toggle-settings')"
+          class="bg-main-600 hover:bg-main-500 text-white text-xs px-3 py-1.5 rounded transition-colors shrink-0"
+          title="Render settings"
+        >
+          Settings
         </button>
 
         <!-- Fullscreen -->

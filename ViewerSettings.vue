@@ -1,0 +1,91 @@
+<script setup lang="ts">
+import { ref, watch } from 'vue'
+import type { RenderSettings } from './renderSettings'
+
+const props = defineProps<{
+  modelValue: RenderSettings
+  show: boolean
+}>()
+
+const emit = defineEmits<{
+  'update:modelValue': [RenderSettings]
+  'close': []
+}>()
+
+// Local mirror so checkbox bindings stay snappy without parent round-trip.
+const local = ref<RenderSettings>({ ...props.modelValue })
+
+watch(
+  () => props.modelValue,
+  (v) => { local.value = { ...v } },
+  { deep: true },
+)
+
+function commit() {
+  emit('update:modelValue', { ...local.value })
+}
+</script>
+
+<template>
+  <div
+    v-if="show"
+    class="absolute top-4 right-4 z-30 w-64 bg-main-800/95 backdrop-blur-sm border border-main-400/40 rounded-md shadow-lg text-sm"
+  >
+    <div class="flex items-center justify-between px-3 py-2 border-b border-main-400/30">
+      <span class="font-mono text-gray-200">Render Settings</span>
+      <button
+        @click="$emit('close')"
+        class="text-gray-400 hover:text-white text-xs"
+        title="Close"
+      >✕</button>
+    </div>
+
+    <div class="px-3 py-2 space-y-2">
+      <label class="flex items-center justify-between cursor-pointer">
+        <span class="text-gray-300">Bloom</span>
+        <input
+          type="checkbox"
+          v-model="local.bloom"
+          @change="commit"
+          class="accent-green-700"
+        />
+      </label>
+      <label class="flex items-center justify-between cursor-pointer">
+        <span class="text-gray-300">Auto-exposure</span>
+        <input
+          type="checkbox"
+          v-model="local.autoExposure"
+          @change="commit"
+          class="accent-green-700"
+        />
+      </label>
+      <label class="flex items-center justify-between cursor-pointer">
+        <span class="text-gray-300">FXAA</span>
+        <input
+          type="checkbox"
+          v-model="local.fxaa"
+          @change="commit"
+          class="accent-green-700"
+        />
+      </label>
+      <label class="flex items-center justify-between cursor-pointer">
+        <span class="text-gray-300">Disable fog</span>
+        <input
+          type="checkbox"
+          v-model="local.disableFog"
+          @change="commit"
+          class="accent-green-700"
+        />
+      </label>
+      <label class="flex items-center justify-between cursor-pointer">
+        <span class="text-gray-300">Full bright</span>
+        <input
+          type="checkbox"
+          v-model="local.fullbright"
+          @change="commit"
+          class="accent-green-700"
+        />
+      </label>
+    </div>
+  </div>
+</template>
