@@ -19,11 +19,49 @@ export async function fetchWithProgress(
 
   // Always use streaming reader so progress updates even without Content-Length
   const reader = response.body.getReader();
-  const chunks: Uint8Array[] = [];
   let received = 0;
 
   onProgress(0, total);
 
+  // Fast path when the size is known up front: write directly into one buffer.
+  // For huge files (e.g. ~1GB map downloads) this halves peak memory vs.
+  // accumulating chunks and copying into a final buffer at the end.
+  if (total !== null) {
+    const result = new Uint8Array(total);
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      // Guard against servers that under-report Content-Length: fall back to
+      // the chunked path rather than overflowing the preallocated buffer.
+      if (received + value.length > total) {
+        const chunks: Uint8Array[] = [result.subarray(0, received), value];
+        received += value.length;
+        onProgress(received, null);
+        while (true) {
+          const r = await reader.read();
+          if (r.done) break;
+          chunks.push(r.value);
+          received += r.value.length;
+          onProgress(received, null);
+        }
+        const overflow = new Uint8Array(received);
+        let off = 0;
+        for (const c of chunks) {
+          overflow.set(c, off);
+          off += c.length;
+        }
+        return overflow.buffer;
+      }
+      result.set(value, received);
+      received += value.length;
+      onProgress(received, total);
+    }
+    // Server may also over-report; trim to actual bytes read.
+    if (received !== total) return result.buffer.slice(0, received);
+    return result.buffer;
+  }
+
+  const chunks: Uint8Array[] = [];
   while (true) {
     const { done, value } = await reader.read();
     if (done) break;

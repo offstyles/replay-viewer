@@ -115,7 +115,7 @@ async function initViewer() {
   stepLabel.value = "Downloading map...";
   progress.value = 0;
   const bspUrl = `${apiBaseUrl}/bsp?map=${encodeURIComponent(props.mapName)}`;
-  const bz2Data = await fetchWithProgress(bspUrl, (received, total) => {
+  let bz2Data: ArrayBuffer | null = await fetchWithProgress(bspUrl, (received, total) => {
     if (total) {
       progress.value = received / total;
       const pct = Math.round((received / total) * 100);
@@ -131,6 +131,10 @@ async function initViewer() {
   progress.value = null;
   await waitForNextPaint();
   const bspBytes = wasm.decompress_bz2(new Uint8Array(bz2Data));
+  // Drop the compressed buffer ASAP — on big maps (e.g. bhop_gyat ~980MB
+  // compressed → ~1.9GB raw) holding both alongside the wasm working set
+  // pushes total memory past browser limits and trips the wasm OOM panic.
+  bz2Data = null;
 
   currentStep.value = 4;
   stepLabel.value = "Initializing renderer...";

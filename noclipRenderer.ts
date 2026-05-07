@@ -199,12 +199,10 @@ export class NoclipRenderer {
         };
         this.renderer = new SourceRenderer(sceneContext, this.renderContext);
 
-        const bspSlice = new ArrayBufferSlice(
-            bspBytes.buffer.slice(
-                bspBytes.byteOffset,
-                bspBytes.byteOffset + bspBytes.byteLength,
-            ),
-        );
+        // bspBytes came from wasm-bindgen's .slice() copy, so it already owns
+        // a fresh, full ArrayBuffer at offset 0. Wrap it directly — copying
+        // again here would double-allocate ~2 GB on big maps and OOM the tab.
+        const bspSlice = ArrayBufferSlice.fromView(bspBytes);
         const bspFile = new BSPFile(bspSlice, mapName, BSPFileVariant.Default);
 
         this.renderContext.toneMapParams.toneMapScale = 1.0;
