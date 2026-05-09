@@ -8,7 +8,7 @@ const props = defineProps<{
   camera: Camera
 }>()
 
-const emit = defineEmits(['close', 'toggle-stats', 'toggle-settings'])
+const emit = defineEmits(['close', 'toggle-stats', 'toggle-settings', 'toggle-info'])
 
 const isScrubbing = ref(false)
 const scrubberValue = ref(0)
@@ -97,6 +97,8 @@ function onKeyDown(e: KeyboardEvent) {
     toggleCamera()
   } else if (e.key.toLowerCase() === 'g') {
     emit('toggle-stats')
+  } else if (e.key.toLowerCase() === 'i') {
+    emit('toggle-info')
   } else if (e.key.toLowerCase() === 'f' && !e.ctrlKey) {
     toggleFullscreen()
   }
@@ -187,6 +189,15 @@ defineExpose({ updateScrubber })
           title="Toggle camera (X)"
         >
           Camera <span class="text-gray-400 ml-0.5">X</span>
+        </button>
+
+        <!-- Info toggle -->
+        <button
+          @click="$emit('toggle-info')"
+          class="bg-main-600 hover:bg-main-500 text-white text-xs px-3 py-1.5 rounded transition-colors shrink-0"
+          title="Toggle info (I)"
+        >
+          Info <span class="text-gray-400 ml-0.5">I</span>
         </button>
 
         <!-- Stats toggle -->

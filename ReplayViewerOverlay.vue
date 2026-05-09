@@ -10,6 +10,7 @@ import { PlaybackEngine, type PlaybackState } from "./playback";
 import { Camera } from "./camera";
 import { fetchWithProgress } from "./fetchWithProgress";
 import ViewerSettings from "./ViewerSettings.vue";
+import type { Time } from "@/types/Time";
 
 async function waitForNextPaint() {
   await nextTick();
@@ -21,6 +22,7 @@ const props = defineProps<{
   mapName: string;
   replayId: string;
   show: boolean;
+  time?: Time | null;
 }>();
 
 const emit = defineEmits(["close"]);
@@ -62,6 +64,7 @@ const playbackState = shallowRef<PlaybackState>({
 const isFreecam = ref(false);
 const showStats = ref(false);
 const showSettings = ref(false);
+const showInfo = ref(true);
 const renderSettings = ref<RenderSettings>({ ...DEFAULT_RENDER_SETTINGS });
 
 function onSettingsChanged(s: RenderSettings) {
@@ -266,7 +269,14 @@ function close() {
     />
 
     <!-- HUD -->
-    <ViewerHUD v-if="!isLoading && !errorMessage" :state="playbackState" :is-freecam="isFreecam" />
+    <ViewerHUD
+      v-if="!isLoading && !errorMessage"
+      :state="playbackState"
+      :is-freecam="isFreecam"
+      :show-info="showInfo"
+      :map-name="mapName"
+      :time="time ?? null"
+    />
 
     <!-- Controls -->
     <ViewerControls
@@ -277,6 +287,7 @@ function close() {
       @close="close"
       @toggle-stats="showStats = !showStats"
       @toggle-settings="showSettings = !showSettings"
+      @toggle-info="showInfo = !showInfo"
     />
 
     <!-- Stats overlay -->

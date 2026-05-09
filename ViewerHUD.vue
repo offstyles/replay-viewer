@@ -2,13 +2,22 @@
 import { computed } from 'vue'
 import type { PlaybackState } from './playback'
 import { IN_FORWARD, IN_BACK, IN_MOVELEFT, IN_MOVERIGHT, IN_JUMP, IN_DUCK } from './playback'
+import type { Time } from '@/types/Time'
+import dateTimeFormats from '@/utils/dateTimeFormats'
 
 const props = defineProps<{
   state: PlaybackState
   isFreecam: boolean
+  showInfo: boolean
+  mapName: string
+  time: Time | null
 }>()
 
 const speed = computed(() => Math.round(props.state.speed).toString())
+
+const runTime = computed(() =>
+  props.time && props.time.time > 0 ? dateTimeFormats.time(props.time.time) : null,
+)
 
 function isPressed(flag: number): boolean {
   return (props.state.buttons & flag) !== 0
@@ -20,6 +29,16 @@ function isPressed(flag: number): boolean {
     <!-- Camera mode -->
     <div class="absolute top-4 left-5 text-sm text-gray-400 drop-shadow-lg">
       {{ isFreecam ? 'Freecam' : 'Follow Cam' }}
+    </div>
+
+    <!-- Replay info -->
+    <div
+      v-if="showInfo"
+      class="absolute top-12 left-5 drop-shadow-lg space-y-0.5 leading-tight"
+    >
+      <div v-if="mapName" class="text-base text-white">{{ mapName }}</div>
+      <div v-if="time?.name" class="text-sm text-gray-300">{{ time.name }}</div>
+      <div v-if="runTime" class="text-sm text-gray-300 tabular-nums">{{ runTime }}</div>
     </div>
 
     <!-- Speed (centered above key display) -->
