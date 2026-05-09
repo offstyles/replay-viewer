@@ -221,12 +221,16 @@ function stealPair(pairs: VKFPair[], name: string): VKFPair | null {
 export async function parseVMT(filesystem: SourceFileSystem, path: string, depth: number = 0): Promise<VMT> {
     async function parsePath(path: string): Promise<VMT> {
         path = filesystem.resolvePath(path, '.vmt');
-        if (!filesystem.hasEntry(path)) {
-            // Amazingly, the material could be in materials/materials/, like is
-            //    materials/materials/nature/2/blenddirttojunglegrass002b.vmt
-            // from cp_mossrock
+        // Amazingly, the material could be in materials/materials/, like is
+        //    materials/materials/nature/2/blenddirttojunglegrass002b.vmt
+        // from cp_mossrock, or
+        //    materials/materials/real_dev/dev_pink6.vmt
+        // from bhop_jaunt_2. Gate the retry on the authoritative mounts: an
+        // opportunistic loose mount (CSPakMount) claims every path, so a
+        // plain hasEntry() short-circuits the retry and the doubled-prefix
+        // pakfile entry never gets matched.
+        if (!filesystem.hasEntryAuthoritative(path) && filesystem.hasEntryAuthoritative(`materials/${path}`))
             path = `materials/${path}`;
-        }
         if (!filesystem.hasEntry(path))
             path = `materials/editor/obsolete.vmt`;
         // CSPakMount.hasEntry is optimistic, so 404s only surface at fetch

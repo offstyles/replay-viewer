@@ -176,7 +176,7 @@ export class SourceFileSystem {
         return null;
     }
 
-    private hasEntryAuthoritative(resolvedPath: string): boolean {
+    public hasEntryAuthoritative(resolvedPath: string): boolean {
         for (let i = 0; i < this.vpk.length; i++) {
             const entry = this.vpk[i].findEntry(resolvedPath);
             if (entry !== null) return true;
