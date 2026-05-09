@@ -60,13 +60,16 @@ function commit() {
         />
       </label>
       <label class="flex items-center justify-between cursor-pointer">
-        <span class="text-gray-300">FXAA</span>
-        <input
-          type="checkbox"
-          v-model="local.fxaa"
+        <span class="text-gray-300">Anti-aliasing</span>
+        <select
+          v-model="local.antialiasing"
           @change="commit"
-          class="accent-green-700"
-        />
+          class="bg-main-700 border border-main-400/40 text-gray-200 rounded px-1 py-0.5 text-xs focus:outline-none focus:border-green-700"
+        >
+          <option value="none">None</option>
+          <option value="fxaa">FXAA</option>
+          <option value="msaa4">MSAA 4&times;</option>
+        </select>
       </label>
       <label class="flex items-center justify-between cursor-pointer">
         <span class="text-gray-300">Disable fog</span>

@@ -26,9 +26,17 @@ import {
 } from "./noclip/SourceEngine/Main.js";
 import type { SceneContext } from "./noclip/SceneBase.js";
 import type { ViewerRenderInput } from "./noclip/viewer.js";
-import { DEFAULT_RENDER_SETTINGS, type RenderSettings } from "./renderSettings";
+import { DEFAULT_RENDER_SETTINGS, type AntialiasingSetting, type RenderSettings } from "./renderSettings";
 
 export type { RenderSettings } from "./renderSettings";
+
+function antialiasingModeFor(s: AntialiasingSetting): AntialiasingMode {
+    switch (s) {
+        case 'fxaa': return AntialiasingMode.FXAA;
+        case 'msaa4': return AntialiasingMode.MSAAx4;
+        case 'none': return AntialiasingMode.None;
+    }
+}
 
 const CSPAK_BASE = "/api/csspak";
 
@@ -272,7 +280,7 @@ export class NoclipRenderer {
             backbufferWidth: this.canvas.width || 1,
             backbufferHeight: this.canvas.height || 1,
             onscreenTexture: null as unknown as GfxTexture,
-            antialiasingMode: this.settings.fxaa ? AntialiasingMode.FXAA : AntialiasingMode.None,
+            antialiasingMode: antialiasingModeFor(this.settings.antialiasing),
             mouseLocation: { mouseX: 0, mouseY: 0 },
             debugConsole: { addInfoLine: () => {} },
         };

@@ -1,7 +1,9 @@
+export type AntialiasingSetting = 'none' | 'fxaa' | 'msaa4';
+
 export interface RenderSettings {
     bloom: boolean;
     autoExposure: boolean;
-    fxaa: boolean;
+    antialiasing: AntialiasingSetting;
     disableFog: boolean;
     fullbright: boolean;
 }
@@ -9,7 +11,7 @@ export interface RenderSettings {
 export const DEFAULT_RENDER_SETTINGS: RenderSettings = {
     bloom: true,
     autoExposure: true,
-    fxaa: true,
+    antialiasing: 'msaa4',
     disableFog: false,
     fullbright: false,
 };

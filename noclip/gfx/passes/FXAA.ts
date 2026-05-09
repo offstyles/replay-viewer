@@ -88,11 +88,16 @@ export class FXAA {
 
     constructor(renderCache: GfxRenderCache) {
         this.gfxProgram = createProgram(renderCache);
+        // Bilinear: the FXAA edge-blend taps sample at fractional sub-texel
+        // offsets along `dir`, so point filtering snaps them back to the
+        // center texel and the smoothing pass becomes a no-op. The luma
+        // taps use textureOffset() with constant integer offsets and are
+        // unaffected by the filter.
         this.gfxSampler = renderCache.createSampler({
             wrapS: GfxWrapMode.Repeat,
             wrapT: GfxWrapMode.Repeat,
-            minFilter: GfxTexFilterMode.Point,
-            magFilter: GfxTexFilterMode.Point,
+            minFilter: GfxTexFilterMode.Bilinear,
+            magFilter: GfxTexFilterMode.Bilinear,
             mipFilter: GfxMipFilterMode.Nearest,
         })
     }
