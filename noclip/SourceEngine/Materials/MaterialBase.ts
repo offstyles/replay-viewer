@@ -592,16 +592,24 @@ export abstract class BaseMaterial {
             return false;
 
         if (texture === this.paramGetVTF('$basetexture')) {
-            // Special consideration.
             if (this.paramGetBoolean('$opaquetexture'))
                 return false;
-            // Explicit $translucent/$alphatest wins over $selfillum inference
-            // below — without this, decals with both flags render as a black
-            // box (e.g. bhop_stref_amazon's mapby).
-            if (this.paramGetBoolean('$translucent') || this.paramGetBoolean('$alphatest'))
+
+            const explicitTrans = this.paramGetBoolean('$translucent') || this.paramGetBoolean('$alphatest');
+
+            // Decals defer to $translucent (else bhop_stref_amazon's mapby
+            // renders as a black box).
+            if (explicitTrans && this.paramGetBoolean('$decal'))
                 return texture.isTranslucent();
+
+            // $selfillum consumes alpha as the selfillum mask (else
+            // bhop_flartstrafe_cubez's neon tops render see-through to sky).
             if (this.paramGetBoolean('$selfillum') || this.paramGetBoolean('$basealphaenvmapmask'))
                 return false;
+
+            if (explicitTrans)
+                return texture.isTranslucent();
+
             return false;
         }
 
