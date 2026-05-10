@@ -431,98 +431,6 @@ export class SkyboxRenderer {
     }
 }
 
-// Depth-only pass for SKY/SKY2D-flagged brush surfaces — Source draws sky
-// brushes after the 2D skybox to z-reject world geometry behind them.
-// Maps like bhop_enlightened rely on this for visual occlusion.
-class SkyOccluderProgram extends DeviceProgram {
-    // The uniform block is declared in the vertex shader only — the
-    // fragment shader doesn't read it, and emitting an unused interface
-    // block in both stages can fail to link on some drivers.
-    public override vert = `
-${GfxShaderLibrary.MatrixLibrary}
-
-layout(std140) uniform ub_Params {
-    Mat4x4 u_ClipFromWorld;
-};
-
-layout(location = 0) in vec3 a_Position;
-void main() {
-    gl_Position = UnpackMatrix(u_ClipFromWorld) * vec4(a_Position, 1.0);
-}
-`;
-    public override frag = `
-void main() {
-    gl_FragColor = vec4(0.0);
-}
-`;
-}
-
-export class SkyOccluder {
-    private vertexBuffer: GfxBuffer;
-    private indexBuffer: GfxBuffer;
-    private inputLayout: GfxInputLayout;
-    private program: GfxProgram;
-    private indexCount: number;
-    private megaStateFlags: Partial<import("../gfx/platform/GfxPlatform.js").GfxMegaStateDescriptor>;
-    private static readonly bindingLayouts = [{ numUniformBuffers: 1, numSamplers: 0 }];
-
-    constructor(device: GfxDevice, cache: GfxRenderCache, vertices: Float32Array, indices: Uint32Array) {
-        this.vertexBuffer = createBufferFromData(device, GfxBufferUsage.Vertex, GfxBufferFrequencyHint.Static, vertices.buffer);
-        this.indexBuffer = createBufferFromData(device, GfxBufferUsage.Index, GfxBufferFrequencyHint.Static, indices.buffer);
-        this.indexCount = indices.length;
-
-        this.inputLayout = cache.createInputLayout({
-            vertexAttributeDescriptors: [
-                { location: 0, bufferIndex: 0, bufferByteOffset: 0, format: GfxFormat.F32_RGB },
-            ],
-            vertexBufferDescriptors: [
-                { byteStride: 12, frequency: GfxVertexBufferFrequency.PerVertex },
-            ],
-            indexBufferFormat: GfxFormat.U32_R,
-        });
-        const prog = new SkyOccluderProgram();
-        prog.name = 'SkyOccluder';
-        this.program = cache.createProgram(prog);
-
-        const noBlend = {
-            blendMode: GfxBlendMode.Add,
-            blendSrcFactor: GfxBlendFactor.One,
-            blendDstFactor: GfxBlendFactor.Zero,
-        };
-        this.megaStateFlags = {
-            attachmentsState: [{
-                channelWriteMask: GfxChannelWriteMask.None,
-                rgbBlendState: noBlend,
-                alphaBlendState: noBlend,
-            }],
-            depthCompare: reverseDepthForCompareMode(GfxCompareMode.LessEqual),
-            depthWrite: true,
-            cullMode: GfxCullMode.None,
-        };
-    }
-
-    // Caller must invoke this inside a pushed template scope so the
-    // returned inst inherits the renderHelper's dynamic uniform buffer.
-    public makeRenderInst(renderInstManager: GfxRenderInstManager, view: SourceEngineView): GfxRenderInst | null {
-        if (this.indexCount === 0) return null;
-        const renderInst = renderInstManager.newRenderInst();
-        renderInst.setBindingLayouts(SkyOccluder.bindingLayouts);
-        renderInst.setGfxProgram(this.program);
-        renderInst.setMegaStateFlags(this.megaStateFlags);
-        renderInst.setVertexInput(this.inputLayout, [{ buffer: this.vertexBuffer, byteOffset: 0 }], { buffer: this.indexBuffer, byteOffset: 0 });
-        renderInst.setDrawCount(this.indexCount, 0);
-        let offs = renderInst.allocateUniformBuffer(0, 16);
-        const d = renderInst.mapUniformBufferF32(0);
-        offs += fillMatrix4x4(d, offs, view.clipFromWorldMatrix);
-        return renderInst;
-    }
-
-    public destroy(device: GfxDevice): void {
-        device.destroyBuffer(this.vertexBuffer);
-        device.destroyBuffer(this.indexBuffer);
-    }
-}
-
 export class BSPSurfaceRenderer {
     public visible = true;
     public materialInstance: BaseMaterial | null = null;
@@ -795,7 +703,6 @@ export class BSPRenderer {
     public liveFaceSet = new Set<number>();
     public liveLeafSet = new Set<number>();
     public lightmapUpdaters: (FaceLightmapUpdater | null)[] = [];
-    public skyOccluder: SkyOccluder | null = null;
     private startLightmapPageIndex: number = 0;
 
     public materialsLoaded(): Promise<unknown> {
@@ -811,10 +718,6 @@ export class BSPRenderer {
         const device = renderContext.device, cache = renderContext.renderCache;
         this.vertexBuffer = createBufferFromData(device, GfxBufferUsage.Vertex, GfxBufferFrequencyHint.Static, this.bsp.vertexData);
         this.indexBuffer = createBufferFromData(device, GfxBufferUsage.Index, GfxBufferFrequencyHint.Static, this.bsp.indexData);
-
-        if (this.bsp.skyOccluderVertices !== null && this.bsp.skyOccluderIndices !== null) {
-            this.skyOccluder = new SkyOccluder(device, cache, this.bsp.skyOccluderVertices, this.bsp.skyOccluderIndices);
-        }
 
         device.setResourceName(this.vertexBuffer, `BSP ${this.bsp.mapname}`);
         device.setResourceName(this.indexBuffer, `BSP ${this.bsp.mapname} (IB)`);
@@ -1001,9 +904,6 @@ export class BSPRenderer {
     public destroy(device: GfxDevice): void {
         device.destroyBuffer(this.vertexBuffer);
         device.destroyBuffer(this.indexBuffer);
-
-        if (this.skyOccluder !== null)
-            this.skyOccluder.destroy(device);
 
         for (let i = 0; i < this.detailPropLeafRenderers.length; i++)
             this.detailPropLeafRenderers[i].destroy(device);
@@ -1557,28 +1457,8 @@ export class SourceWorldViewRenderer {
 
             this.lateBindTextureAttachPass(renderContext, builder, pass);
 
-            const renderInstManager = renderer.renderHelper.renderInstManager;
-            const cache = renderContext.renderCache;
-            // Build sky-occluder insts at setup-time inside a pushed
-            // template scope so they inherit the dynamic uniform buffer;
-            // .drawOnPass() below issues the GL draw at exec-time.
-            renderer.renderHelper.pushTemplateRenderInst();
-            const skyInsts: GfxRenderInst[] = [];
-            for (let i = 0; i < renderer.bspRenderers.length; i++) {
-                const occ = renderer.bspRenderers[i].skyOccluder;
-                if (occ !== null) {
-                    const inst = occ.makeRenderInst(renderInstManager, this.mainView);
-                    if (inst !== null) skyInsts.push(inst);
-                }
-            }
-            renderInstManager.popTemplate();
-
             pass.exec((passRenderer, scope) => {
                 this.lateBindTextureSetOnPassRenderer(renderer, scope);
-                // Lay down sky-brush depth first so any later world
-                // geometry behind them is z-rejected.
-                for (let i = 0; i < skyInsts.length; i++)
-                    skyInsts[i].drawOnPass(cache, passRenderer);
                 renderer.executeOnPass(passRenderer, this.mainView.mainList);
             });
         });

@@ -1078,10 +1078,6 @@ export class BSPFile {
     public pakfile: ZipFile | null = null;
     public nodelist: BSPNode[] = [];
     public leaflist: BSPLeaf[] = [];
-    // Position-only data for SKY/SKY2D surfaces; SkyOccluder draws these
-    // depth-only so sky brushes occlude geometry behind them.
-    public skyOccluderVertices: Float32Array | null = null;
-    public skyOccluderIndices: Uint32Array | null = null;
     public cubemaps: Cubemap[] = [];
     public worldlights: WorldLight[] = [];
     public leafwaterdata: BSPLeafWaterData[] = [];
@@ -1504,9 +1500,6 @@ export class BSPFile {
         // Normals are packed in surface order (???), so we need to unpack these before the initial sort.
         let vertnormalIdx = 0;
 
-        const skyVertsArr: number[] = [];
-        const skyIdxArr: number[] = [];
-
         // Do some initial surface parsing, pack lightmaps.
         for (let i = 0, idx = 0x00; idx < facelist.byteLength; i++, idx += 0x38, numfaces++) {
             const numedges = facelist.getUint16(idx + 0x08, true);
@@ -1518,17 +1511,8 @@ export class BSPFile {
             const vertnormalBase = vertnormalIdx;
             vertnormalIdx += numedges;
 
-            if (!!(tex.flags & (TexinfoFlags.SKY | TexinfoFlags.SKY2D))) {
-                const baseVert = skyVertsArr.length / 3;
-                for (let e = 0; e < numedges; e++) {
-                    const vi = vertindices[firstedge + e];
-                    skyVertsArr.push(vertexes[vi * 3 + 0], vertexes[vi * 3 + 1], vertexes[vi * 3 + 2]);
-                }
-                for (let t = 1; t < numedges - 1; t++) {
-                    skyIdxArr.push(baseVert, baseVert + t, baseVert + t + 1);
-                }
+            if (!!(tex.flags & (TexinfoFlags.SKY | TexinfoFlags.SKY2D)))
                 continue;
-            }
 
             const lightofs = facelist.getInt32(idx + 0x14, true);
             const m_LightmapTextureSizeInLuxels = nArray(2, (i) => facelist!.getUint32(idx + 0x24 + i * 4, true));
@@ -1978,10 +1962,6 @@ export class BSPFile {
             }
         }
 
-        if (skyIdxArr.length > 0) {
-            this.skyOccluderVertices = new Float32Array(skyVertsArr);
-            this.skyOccluderIndices = new Uint32Array(skyIdxArr);
-        }
         //#endregion
 
         //#region Overlays
