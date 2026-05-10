@@ -131,11 +131,17 @@ export class ValveKeyValueParser {
     }
 
     private num(start: string): string {
-        const num = this.run(/[0-9.]/, start);
-        // numbers can have garbage at the end of them. this is ugly...
-        // shoutouts to materials/models/props_lab/printout_sheet.vmt which has a random letter "y" after a number
-        this.run(/[a-zA-Z]/, '');
-        return num;
+        // VMT tokens beginning with a digit are usually numbers but can also be
+        // identifiers, e.g. "1NzT4nTz_b0b_Textures\Concrete_NuBs" (a $basetexture
+        // path in bhop_ambience). Reading just [0-9.] would split the identifier
+        // at the first letter and silently truncate it to "1", leaving the
+        // material with a missing basetexture. Consume the full identifier-class
+        // run, then if the result is otherwise purely numeric strip a trailing
+        // alphabetic suffix — materials/models/props_lab/printout_sheet.vmt has
+        // a stray "y" after a number that Number() would otherwise reject.
+        const tok = this.run(/[0-9a-zA-Z$%<>=/\\_,.\-]/, start);
+        const m = tok.match(/^(-?[0-9.]+)[a-zA-Z]+$/);
+        return m !== null ? m[1] : tok;
     }
 
     private unquote(start: string): string {
