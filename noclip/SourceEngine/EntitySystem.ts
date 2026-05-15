@@ -256,17 +256,7 @@ export class BaseEntity {
             if (!renderContext.currentView.frustum.contains(scratchAABB))
                 return false;
 
-            const bsp = this.bspRenderer.bsp, pvs = renderContext.currentView.pvs;
-            let visible = false;
-            bsp.queryAABB(scratchAABB, (leaf) => {
-                if (pvs.getBit(leaf.cluster)) {
-                    visible = true;
-                    return false; // can stop here
-                }
-
-                return true; // keep going
-            });
-            return visible;
+            return this.bspRenderer.bsp.pvsTouchesAABB(scratchAABB, renderContext.currentView.pvs);
         } else {
             // Entity doesn't have render bounds, e.g. particle effects and such.
             return true;

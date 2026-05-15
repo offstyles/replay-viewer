@@ -689,6 +689,36 @@ export enum RenderObjectKind {
     DetailProps = 1 << 3,
 }
 
+// Dense bitmap + parallel index list. Add/has/clear are O(1) per element with no
+// hashing or allocation, and iteration walks the index list directly.
+class IndexSet {
+    public bits: Uint8Array;
+    public indexes: Int32Array;
+    public count: number = 0;
+
+    constructor(capacity: number) {
+        this.bits = new Uint8Array(capacity);
+        this.indexes = new Int32Array(capacity);
+    }
+
+    public clear(): void {
+        for (let i = 0; i < this.count; i++)
+            this.bits[this.indexes[i]] = 0;
+        this.count = 0;
+    }
+
+    public add(idx: number): void {
+        if (this.bits[idx] === 0) {
+            this.bits[idx] = 1;
+            this.indexes[this.count++] = idx;
+        }
+    }
+
+    public has(idx: number): boolean {
+        return this.bits[idx] === 1;
+    }
+}
+
 export class BSPRenderer {
     private vertexBuffer: GfxBuffer;
     private indexBuffer: GfxBuffer;
@@ -699,9 +729,9 @@ export class BSPRenderer {
     public models: BSPModelRenderer[] = [];
     public detailPropLeafRenderers: DetailPropLeafRenderer[] = [];
     public staticPropRenderers: StaticPropRenderer[] = [];
-    public liveSurfaceSet = new Set<number>();
-    public liveFaceSet = new Set<number>();
-    public liveLeafSet = new Set<number>();
+    public liveSurfaceSet: IndexSet;
+    public liveFaceSet: IndexSet;
+    public liveLeafSet: IndexSet;
     public lightmapUpdaters: (FaceLightmapUpdater | null)[] = [];
     private startLightmapPageIndex: number = 0;
 
@@ -711,6 +741,10 @@ export class BSPRenderer {
 
     constructor(renderContext: SourceRenderContext, public bsp: BSPFile) {
         this.entitySystem = new EntitySystem(renderContext, this);
+
+        this.liveSurfaceSet = new IndexSet(this.bsp.surfaces.length);
+        this.liveFaceSet = new IndexSet(this.bsp.faceInfos.length);
+        this.liveLeafSet = new IndexSet(this.bsp.leaflist.length);
 
         renderContext.materialCache.setRenderConfig(this.bsp.usingHDR, this.bsp.version);
         this.startLightmapPageIndex = renderContext.lightmapManager.appendPackerPages(this.bsp.lightmapPacker);
@@ -785,7 +819,7 @@ export class BSPRenderer {
             this.staticPropRenderers[i].movement(renderContext);
     }
 
-    public gatherLiveSets(liveFaceSet: Set<number> | null, liveLeafSet: Set<number> | null, view: SourceEngineView, nodeid: number = 0, modelMatrix: ReadonlyMat4 | null = null): void {
+    public gatherLiveSets(liveFaceSet: IndexSet | null, liveLeafSet: IndexSet | null, view: SourceEngineView, nodeid: number = 0, modelMatrix: ReadonlyMat4 | null = null): void {
         if (nodeid >= 0) {
             // node
             const node = this.bsp.nodelist[nodeid];
@@ -835,7 +869,10 @@ export class BSPRenderer {
                 assert(worldModel.modelMatrix === null);
                 this.gatherLiveSets(this.liveFaceSet, this.liveLeafSet, renderContext.currentView);
 
-                for (const faceIdx of this.liveFaceSet.values()) {
+                const liveFaceIndexes = this.liveFaceSet.indexes;
+                const liveFaceCount = this.liveFaceSet.count;
+                for (let f = 0; f < liveFaceCount; f++) {
+                    const faceIdx = liveFaceIndexes[f];
                     const lightmapUpdater = this.lightmapUpdaters[faceIdx];
                     if (lightmapUpdater !== null) {
                         lightmapUpdater.update(renderContext);
@@ -850,8 +887,10 @@ export class BSPRenderer {
                         this.liveSurfaceSet.add(faceInfo.overlaySurfaces[i]);
                 }
 
-                for (const surfaceIdx of this.liveSurfaceSet.values())
-                    worldModel.surfacesByIdx[surfaceIdx].prepareToRender(renderContext, renderInstManager, worldModel.modelMatrix);
+                const liveSurfaceIndexes = this.liveSurfaceSet.indexes;
+                const liveSurfaceCount = this.liveSurfaceSet.count;
+                for (let s = 0; s < liveSurfaceCount; s++)
+                    worldModel.surfacesByIdx[liveSurfaceIndexes[s]].prepareToRender(renderContext, renderInstManager, worldModel.modelMatrix);
 
                 // Detail props.
                 if (!!(kinds & RenderObjectKind.DetailProps)) {
@@ -1921,10 +1960,9 @@ export class SourceRenderer implements SceneGfx {
         this.mainViewRenderer.prepareToRender(this, null);
 
         // Reflection is only supported on the first BSP renderer (maybe we should just kill the concept of having multiple...)
-        if (this.renderContext.enableExpensiveWater && this.mainViewRenderer.drawWorld) {
+        if (this.renderContext.enableExpensiveWater && this.mainViewRenderer.drawWorld && this.bspRenderers[0].bsp.leafwaterdata.length > 0) {
             const bspRenderer = this.bspRenderers[0], bsp = bspRenderer.bsp;
-            bspRenderer.gatherLiveSets(null, bspRenderer.liveLeafSet, this.mainViewRenderer.mainView);
-            const leafwater = bsp.findLeafWaterForPoint(this.mainViewRenderer.mainView.cameraPos, bspRenderer.liveLeafSet);
+            const leafwater = bsp.findLeafWaterForPoint(this.mainViewRenderer.mainView.cameraPos, this.mainViewRenderer.mainView.pvs);
             if (leafwater !== null) {
                 const waterZ = leafwater.surfaceZ;
 
