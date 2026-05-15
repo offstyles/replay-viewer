@@ -146,16 +146,26 @@ export class NoclipRenderer {
         this.applySettingsToContext();
     }
 
+    public isAutoExposureSupported(): boolean {
+        // The auto-exposure path on WebGL2 polls occlusion query results every
+        // frame. Firefox makes gl.getQueryParameter a synchronous GPU-process
+        // round-trip, which stalls the JS thread (~75% of frame time in
+        // testing) and tanks FPS. The WebGL2 backend already exposes this as
+        // occlusionQueriesRecommended; honor it.
+        return this.device.queryLimits().occlusionQueriesRecommended;
+    }
+
     private applySettingsToContext(): void {
         if (this.renderContext === null) return;
+        const autoExposure = this.settings.autoExposure && this.isAutoExposureSupported();
         this.renderContext.enableBloom = this.settings.bloom;
-        this.renderContext.enableAutoExposure = this.settings.autoExposure;
+        this.renderContext.enableAutoExposure = autoExposure;
         this.renderContext.enableFog = !this.settings.disableFog;
 
         if (this.settings.fullbright) {
             this.renderContext.enableAutoExposure = false;
             this.renderContext.toneMapParams.toneMapScale = 4.0;
-        } else if (!this.settings.autoExposure) {
+        } else if (!autoExposure) {
             this.renderContext.toneMapParams.toneMapScale = 1.0;
         }
     }
@@ -164,7 +174,11 @@ export class NoclipRenderer {
         // antialias: false — noclip renders to its own offscreen target and
         // blits the resolve to the default framebuffer; a multisampled
         // default FB makes that blit invalid.
-        const gl = canvas.getContext("webgl2", { antialias: false });
+        // powerPreference: "high-performance" nudges Safari/iOS off the
+        // low-power GPU path; on ProMotion iPhones that path is also where the
+        // 60Hz rAF cap tends to stick. Won't help if iOS Low Power Mode is on
+        // -- Apple forces 60Hz unconditionally there.
+        const gl = canvas.getContext("webgl2", { antialias: false, powerPreference: "high-performance" });
         if (!gl) throw new Error("WebGL2 not supported");
         this.gl = gl;
 

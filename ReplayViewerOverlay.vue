@@ -66,6 +66,7 @@ const showStats = ref(false);
 const showSettings = ref(false);
 const showInfo = ref(true);
 const renderSettings = ref<RenderSettings>({ ...DEFAULT_RENDER_SETTINGS });
+const autoExposureSupported = ref(true);
 
 function onSettingsChanged(s: RenderSettings) {
   renderSettings.value = s;
@@ -145,6 +146,7 @@ async function initViewer() {
   if (!canvas.value) throw new Error("Canvas not mounted");
   const { NoclipRenderer } = await import("./noclipRenderer");
   renderer = new NoclipRenderer(canvas.value);
+  autoExposureSupported.value = renderer.isAutoExposureSupported();
 
   stepLabel.value = "Parsing map...";
   await waitForNextPaint();
@@ -302,6 +304,7 @@ function close() {
       v-if="!isLoading && !errorMessage"
       :show="showSettings"
       :model-value="renderSettings"
+      :auto-exposure-supported="autoExposureSupported"
       @update:model-value="onSettingsChanged"
       @close="showSettings = false"
     />

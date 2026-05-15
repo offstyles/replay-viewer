@@ -2,10 +2,13 @@
 import { ref, watch } from 'vue'
 import type { RenderSettings } from './renderSettings'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   modelValue: RenderSettings
   show: boolean
-}>()
+  autoExposureSupported?: boolean
+}>(), {
+  autoExposureSupported: true,
+})
 
 const emit = defineEmits<{
   'update:modelValue': [RenderSettings]
@@ -50,13 +53,21 @@ function commit() {
           class="accent-green-700"
         />
       </label>
-      <label class="flex items-center justify-between cursor-pointer">
-        <span class="text-gray-300">Auto-exposure</span>
+      <label
+        class="flex items-center justify-between"
+        :class="props.autoExposureSupported ? 'cursor-pointer' : 'cursor-not-allowed opacity-60'"
+        :title="props.autoExposureSupported ? '' : 'Auto-exposure is disabled in this browser because gl.getQueryParameter stalls the JS thread on Firefox.'"
+      >
+        <span class="text-gray-300">
+          Auto-exposure
+          <span v-if="!props.autoExposureSupported" class="text-xs text-gray-500">(unsupported)</span>
+        </span>
         <input
           type="checkbox"
           v-model="local.autoExposure"
+          :disabled="!props.autoExposureSupported"
           @change="commit"
-          class="accent-green-700"
+          class="accent-green-700 disabled:cursor-not-allowed"
         />
       </label>
       <label class="flex items-center justify-between cursor-pointer">
