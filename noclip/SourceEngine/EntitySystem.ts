@@ -258,8 +258,18 @@ export class BaseEntity {
 
             return this.bspRenderer.bsp.pvsTouchesAABB(scratchAABB, renderContext.currentView.pvs);
         } else {
-            // Entity doesn't have render bounds, e.g. particle effects and such.
-            return true;
+            // Sprites and particle effects carry no render bounds, which exempted them
+            // from culling entirely — they drew from anywhere in the map. Test a small
+            // box around the origin instead, sized so one sitting flush against a wall
+            // still reaches the leaf in front of it. No frustum test: a billboard can
+            // extend well past this box, and the PVS is what was missing.
+            this.getAbsOrigin(scratchVec3a);
+            const r = 32;
+            scratchAABB.set(
+                scratchVec3a[0] - r, scratchVec3a[1] - r, scratchVec3a[2] - r,
+                scratchVec3a[0] + r, scratchVec3a[1] + r, scratchVec3a[2] + r,
+            );
+            return this.bspRenderer.bsp.pvsTouchesAABB(scratchAABB, renderContext.currentView.pvs);
         }
     }
 

@@ -9,8 +9,24 @@ import { DEFAULT_RENDER_SETTINGS, type RenderSettings } from "./renderSettings";
 import { PlaybackEngine, type PlaybackState } from "./playback";
 import { Camera } from "./camera";
 import { fetchWithProgress } from "./fetchWithProgress";
+import { decompressBz2 } from "./decompressBz2";
 import ViewerSettings from "./ViewerSettings.vue";
 import type { Time } from "@/types/Time";
+
+const loadMarks: { name: string; at: number }[] = [];
+function mark(name: string) {
+  loadMarks.push({ name, at: performance.now() });
+}
+
+function reportLoadTimings() {
+  const rows = loadMarks.slice(1).map((m, i) => ({
+    phase: m.name,
+    ms: Math.round(m.at - loadMarks[i].at),
+  }));
+  rows.push({ phase: "TOTAL", ms: Math.round(loadMarks[loadMarks.length - 1].at - loadMarks[0].at) });
+  console.table(rows);
+  (window as { __replayLoadTimings?: typeof rows }).__replayLoadTimings = rows;
+}
 
 async function waitForNextPaint() {
   await nextTick();
@@ -109,11 +125,20 @@ onUnmounted(() => {
 });
 
 async function initViewer() {
+  loadMarks.length = 0;
+  mark("start");
   currentStep.value = 1;
   stepLabel.value = "Initializing WASM...";
   progress.value = null;
   const wasm = await import("./wasm/bhop_replay_viewer_wasm");
   await wasm.default();
+
+  mark("wasm init");
+
+  // Independent of the map pipeline, so start it now rather than after parsing.
+  const replayUrl = `${apiBaseUrl}/replay?id=${encodeURIComponent(props.replayId)}`;
+  const replayBufPromise = fetchWithProgress(replayUrl, () => {}, "include");
+  replayBufPromise.catch(() => {});
 
   currentStep.value = 2;
   stepLabel.value = "Downloading map...";
@@ -130,15 +155,19 @@ async function initViewer() {
     }
   });
 
+  mark("download map");
+
   currentStep.value = 3;
   stepLabel.value = "Decompressing BSP...";
   progress.value = null;
-  await waitForNextPaint();
-  const bspBytes = wasm.decompress_bz2(new Uint8Array(bz2Data));
-  // Drop the compressed buffer ASAP — on big maps (e.g. bhop_gyat ~980MB
-  // compressed → ~1.9GB raw) holding both alongside the wasm working set
-  // pushes total memory past browser limits and trips the wasm OOM panic.
+  // Transferred into the worker, so the compressed buffer and the wasm working set
+  // leave this thread's heap entirely. On big maps (e.g. bhop_gyat ~980MB compressed
+  // → ~1.9GB raw) holding both here pushed total memory past browser limits and
+  // tripped the wasm OOM panic.
+  const bspBytes = await decompressBz2(bz2Data);
   bz2Data = null;
+
+  mark("decompress bsp");
 
   currentStep.value = 4;
   stepLabel.value = "Initializing renderer...";
@@ -148,28 +177,18 @@ async function initViewer() {
   renderer = new NoclipRenderer(canvas.value);
   autoExposureSupported.value = renderer.isAutoExposureSupported();
 
+  mark("init renderer");
+
   stepLabel.value = "Parsing map...";
   await waitForNextPaint();
-  await renderer.loadBSP(bspBytes, props.mapName);
+  await renderer.loadBSP(bspBytes, props.mapName, mark);
 
   currentStep.value = 5;
   stepLabel.value = "Downloading replay...";
-  progress.value = 0;
-  const replayUrl = `${apiBaseUrl}/replay?id=${encodeURIComponent(props.replayId)}`;
-  const replayBuf = await fetchWithProgress(
-    replayUrl,
-    (received, total) => {
-      if (total) {
-        progress.value = received / total;
-        const pct = Math.round((received / total) * 100);
-        stepLabel.value = `Downloading replay... ${pct}% (${(received / 1024).toFixed(0)} / ${(total / 1024).toFixed(0)}KB)`;
-      } else {
-        progress.value = null;
-        stepLabel.value = `Downloading replay... ${(received / 1024).toFixed(0)}KB`;
-      }
-    },
-    "include",
-  );
+  progress.value = null;
+  const replayBuf = await replayBufPromise;
+
+  mark("download replay");
 
   currentStep.value = 6;
   stepLabel.value = "Parsing replay...";
@@ -190,6 +209,9 @@ async function initViewer() {
 
   playbackRef.value = playbackEngine;
   cameraRef.value = camera;
+
+  mark("parse replay");
+  reportLoadTimings();
 
   isLoading.value = false;
   startRenderLoop();

@@ -144,6 +144,8 @@ export function setSortKeyDepth(sortKey: number, depth: number, maxDepth: number
 //#endregion
 
 //#region GfxRenderInst
+const scratchDynamicByteOffsets: number[] = [];
+
 export class GfxRenderInst {
     public sortKey: number = 0;
 
@@ -186,7 +188,8 @@ export class GfxRenderInst {
      * Copies the fields from another render inst {@param o} to this render inst.
      */
     public copyFrom(o: GfxRenderInst): void {
-        this._renderPipelineDescriptor.megaStateDescriptor = copyMegaState(o._renderPipelineDescriptor.megaStateDescriptor);
+        // Copy in place; the render cache deep-copies the descriptor when it interns a pipeline.
+        setMegaStateFlags(this._renderPipelineDescriptor.megaStateDescriptor, o._renderPipelineDescriptor.megaStateDescriptor);
         this._renderPipelineDescriptor.program = o._renderPipelineDescriptor.program;
         this._renderPipelineDescriptor.inputLayout = o._renderPipelineDescriptor.inputLayout;
         this._renderPipelineDescriptor.topology = o._renderPipelineDescriptor.topology;
@@ -215,6 +218,54 @@ export class GfxRenderInst {
         }
         for (let i = 0; i < o._dynamicUniformBufferByteOffsets.length; i++)
             this._dynamicUniformBufferByteOffsets[i] = o._dynamicUniformBufferByteOffsets[i];
+    }
+
+    /**
+     * Restores this render inst to its as-constructed state so it can be handed out again.
+     * Array lengths are preserved so reuse doesn't reallocate; entries are neutralized so a
+     * later, shorter binding layout can't observe leftovers.
+     */
+    public reset(): void {
+        const d = this._renderPipelineDescriptor;
+        setMegaStateFlags(d.megaStateDescriptor, defaultMegaState);
+        d.program = null!;
+        d.inputLayout = null;
+        d.topology = GfxPrimitiveTopology.Triangles;
+        d.bindingLayouts.length = 0;
+        d.colorAttachmentFormats.length = 0;
+        d.depthStencilAttachmentFormat = null;
+        d.sampleCount = 1;
+
+        this.sortKey = 0;
+        this.debug = null;
+        this.debugMarker = null;
+        this._vertexBuffers = null;
+        this._indexBuffer = null;
+        this._drawStart = 0;
+        this._drawCount = 0;
+        this._drawInstanceCount = 1;
+        this._allowSkippingPipelineIfNotReady = true;
+        this._stencilRef = null;
+        this._blendColor = null;
+
+        for (let i = 0; i < this._bindingDescriptors.length; i++) {
+            const bindingDescriptor = this._bindingDescriptors[i];
+            bindingDescriptor.bindingLayout = null!;
+            for (let j = 0; j < bindingDescriptor.uniformBufferBindings.length; j++) {
+                const dst = bindingDescriptor.uniformBufferBindings[j];
+                dst.buffer = null!;
+                dst.byteSize = 0;
+            }
+            for (let j = 0; j < bindingDescriptor.samplerBindings.length; j++) {
+                const dst = bindingDescriptor.samplerBindings[j];
+                dst.gfxTexture = null;
+                dst.gfxSampler = null;
+                dst.lateBinding = undefined;
+            }
+        }
+
+        for (let i = 0; i < this._dynamicUniformBufferByteOffsets.length; i++)
+            this._dynamicUniformBufferByteOffsets[i] = 0;
     }
 
     public validate(): void {
@@ -520,7 +571,11 @@ export class GfxRenderInst {
                 bindingDescriptor.uniformBufferBindings[j].buffer = assertExists(this._uniformBuffer.gfxBuffer);
             const gfxBindings = cache.createBindings(bindingDescriptor);
             const numBuffers = bindingDescriptor.bindingLayout.numUniformBuffers;
-            passRenderer.setBindings(i, gfxBindings, this._dynamicUniformBufferByteOffsets.slice(uboIndex, uboIndex + numBuffers));
+            if (scratchDynamicByteOffsets.length !== numBuffers)
+                scratchDynamicByteOffsets.length = numBuffers;
+            for (let j = 0; j < numBuffers; j++)
+                scratchDynamicByteOffsets[j] = this._dynamicUniformBufferByteOffsets[uboIndex + j];
+            passRenderer.setBindings(i, gfxBindings, scratchDynamicByteOffsets);
             uboIndex += numBuffers;
         }
 
@@ -624,6 +679,9 @@ export class GfxRenderInstManager {
     public templateStack: GfxRenderInst[] = [];
     public currentList: GfxRenderInstList = null!;
 
+    private instPool: GfxRenderInst[] = [];
+    private instPoolCount: number = 0;
+
     constructor(public gfxRenderCache: GfxRenderCache) {
     }
 
@@ -633,10 +691,27 @@ export class GfxRenderInstManager {
      * render inst.
      */
     public newRenderInst(): GfxRenderInst {
-        const renderInst = new GfxRenderInst();
+        let renderInst: GfxRenderInst;
+        if (this.instPoolCount < this.instPool.length) {
+            renderInst = this.instPool[this.instPoolCount];
+            renderInst.reset();
+        } else {
+            renderInst = new GfxRenderInst();
+            this.instPool.push(renderInst);
+        }
+        this.instPoolCount++;
+
         if (this.templateStack.length > 0)
             renderInst.copyFrom(this.getCurrentTemplate());
         return renderInst;
+    }
+
+    /**
+     * Recycles every render inst handed out since the last call. Only call this once every
+     * {@see GfxRenderInstList} holding them has been drawn and reset.
+     */
+    public reset(): void {
+        this.instPoolCount = 0;
     }
 
     /**

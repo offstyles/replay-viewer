@@ -43,21 +43,50 @@ import { WorldLightingState } from "../Common/IdTech2/WorldLightingState.js";
 import { createBufferFromData } from "../gfx/helpers/BufferHelpers.js";
 
 export class LooseMount {
-    private normalizedFiles: string[];
+    private index = new Map<string, string>();
 
-    constructor(public path: string, private files: string[]) {
-        this.normalizedFiles = this.files.map((v) => v.toLowerCase());
+    constructor(public path: string, files: string[]) {
+        for (let i = 0; i < files.length; i++)
+            this.index.set(files[i].toLowerCase(), files[i]);
     }
 
     public hasEntry(resolvedPath: string): boolean {
-        return this.normalizedFiles.includes(resolvedPath);
+        return this.index.has(resolvedPath);
     }
 
     public fetchEntryData(dataFetcher: DataFetcher, resolvedPath: string): Promise<ArrayBufferSlice> {
-        const i = this.normalizedFiles.indexOf(resolvedPath);
-        assert(i >= 0);
-        return dataFetcher.fetchData(`${this.path}/${this.files[i]}`);
+        const file = assertExists(this.index.get(resolvedPath));
+        return dataFetcher.fetchData(`${this.path}/${file}`);
     }
+}
+
+// Filename -> entry lookups for mounted archives. Keyed on the entry array itself so
+// mounts pushed directly onto SourceFileSystem's public arrays are picked up too.
+const zipIndexCache = new WeakMap<ZipFile, Map<string, ZipFile[number]>>();
+const gmaIndexCache = new WeakMap<GMA['files'], Map<string, GMA['files'][number]>>();
+
+function zipIndex(zip: ZipFile): Map<string, ZipFile[number]> {
+    let index = zipIndexCache.get(zip);
+    if (index === undefined) {
+        index = new Map();
+        for (let i = 0; i < zip.length; i++)
+            if (!index.has(zip[i].filename))
+                index.set(zip[i].filename, zip[i]);
+        zipIndexCache.set(zip, index);
+    }
+    return index;
+}
+
+function gmaIndex(gma: GMA): Map<string, GMA['files'][number]> {
+    let index = gmaIndexCache.get(gma.files);
+    if (index === undefined) {
+        index = new Map();
+        for (let i = 0; i < gma.files.length; i++)
+            if (!index.has(gma.files[i].filename))
+                index.set(gma.files[i].filename, gma.files[i]);
+        gmaIndexCache.set(gma.files, index);
+    }
+    return index;
 }
 
 function normalizeZip(zip: ZipFile): void {
@@ -182,16 +211,13 @@ export class SourceFileSystem {
             if (entry !== null) return true;
         }
         for (let i = 0; i < this.pakfiles.length; i++) {
-            const entry = this.pakfiles[i].find((e) => e.filename === resolvedPath);
-            if (entry !== undefined) return true;
+            if (zipIndex(this.pakfiles[i]).has(resolvedPath)) return true;
         }
         for (let i = 0; i < this.zip.length; i++) {
-            const entry = this.zip[i].find((e) => e.filename === resolvedPath);
-            if (entry !== undefined) return true;
+            if (zipIndex(this.zip[i]).has(resolvedPath)) return true;
         }
         for (let i = 0; i < this.gma.length; i++) {
-            const entry = this.gma[i].files.find((e) => e.filename === resolvedPath);
-            if (entry !== undefined) return true;
+            if (gmaIndex(this.gma[i]).has(resolvedPath)) return true;
         }
         return false;
     }
@@ -206,23 +232,17 @@ export class SourceFileSystem {
         }
 
         for (let i = 0; i < this.pakfiles.length; i++) {
-            const pakfile = this.pakfiles[i];
-            const entry = pakfile.find((entry) => entry.filename === resolvedPath);
-            if (entry !== undefined)
+            if (zipIndex(this.pakfiles[i]).has(resolvedPath))
                 return true;
         }
 
         for (let i = 0; i < this.zip.length; i++) {
-            const zip = this.zip[i];
-            const entry = zip.find((entry) => entry.filename === resolvedPath);
-            if (entry !== undefined)
+            if (zipIndex(this.zip[i]).has(resolvedPath))
                 return true;
         }
 
         for (let i = 0; i < this.gma.length; i++) {
-            const gma = this.gma[i];
-            const entry = gma.files.find((entry) => entry.filename === resolvedPath);
-            if (entry !== undefined)
+            if (gmaIndex(this.gma[i]).has(resolvedPath))
                 return true;
         }
 
@@ -245,22 +265,19 @@ export class SourceFileSystem {
         }
 
         for (let i = 0; i < this.pakfiles.length; i++) {
-            const zip = this.pakfiles[i];
-            const entry = zip.find((entry) => entry.filename === resolvedPath);
+            const entry = zipIndex(this.pakfiles[i]).get(resolvedPath);
             if (entry !== undefined)
                 return decompressZipFileEntry(entry);
         }
 
         for (let i = 0; i < this.zip.length; i++) {
-            const zip = this.zip[i];
-            const entry = zip.find((entry) => entry.filename === resolvedPath);
+            const entry = zipIndex(this.zip[i]).get(resolvedPath);
             if (entry !== undefined)
                 return decompressZipFileEntry(entry);
         }
 
         for (let i = 0; i < this.gma.length; i++) {
-            const gma = this.gma[i];
-            const entry = gma.files.find((entry) => entry.filename === resolvedPath);
+            const entry = gmaIndex(this.gma[i]).get(resolvedPath);
             if (entry !== undefined)
                 return entry.data;
         }
@@ -566,7 +583,15 @@ export class BSPModelRenderer {
         if (!this.visible)
             return false;
 
-        if (!view.frustum.contains(transformAABB(this.model.bbox, this.modelMatrix)))
+        const bbox = transformAABB(this.model.bbox, this.modelMatrix);
+
+        if (!view.frustum.contains(bbox))
+            return false;
+
+        // Worldspawn is drawn through gatherLiveSets, which tests the PVS per leaf.
+        // Submodels get here instead, and BaseEntity.prepareToRender never draws
+        // modelBSP, so entity.checkVisible's PVS test doesn't cover brush geometry.
+        if (this.model.headnode !== 0 && !this.bspRenderer.bsp.pvsTouchesAABB(bbox, view.pvs))
             return false;
 
         return true;
@@ -908,6 +933,9 @@ export class BSPRenderer {
             for (let i = 1; i < this.models.length; i++) {
                 const bspModel = this.models[i];
 
+                if (!bspModel.checkFrustum(renderContext))
+                    continue;
+
                 for (let j = 0; j < bspModel.surfaces.length; j++) {
                     const surface = bspModel.surfaces[j];
                     for (let k = 0; k < surface.surface.faceList.length; k++) {
@@ -1242,6 +1270,9 @@ export class SourceRenderContext {
     public currentPointCamera: point_camera | null = null;
     public currentShake: env_shake | null = null;
 
+    // Set by Material_Water when a water surface survives culling. Reset per frame.
+    public waterSurfaceVisible = false;
+
     // Public settings
     public enableFog = true;
     public enableBloom = true;
@@ -1314,6 +1345,9 @@ export class SourceWorldViewRenderer {
     public mainView = new SourceEngineView();
     public skyboxView = new SourceEngineView();
     public enabled = false;
+
+    // Scale applied to this view's render target dimensions.
+    public resolutionScale = 1.0;
 
     public currentProjectedLightRenderer: ProjectedLightRenderer | null = null;
     public outputColorTargetID: GfxrRenderTargetID | null = null;
@@ -1465,6 +1499,10 @@ export class SourceWorldViewRenderer {
 
         const mainColorDesc = new GfxrRenderTargetDescription(GfxFormat.U8_RGBA_RT_SRGB);
         mainColorDesc.copyDimensions(renderTargetDesc);
+        if (this.resolutionScale !== 1.0) {
+            mainColorDesc.width = Math.max(1, (renderTargetDesc.width * this.resolutionScale) | 0);
+            mainColorDesc.height = Math.max(1, (renderTargetDesc.height * this.resolutionScale) | 0);
+        }
         mainColorDesc.clearColor = standardFullClearRenderPassDescriptor.clearColor;
 
         const mainDepthDesc = new GfxrRenderTargetDescription(GfxFormat.D32F);
@@ -1782,7 +1820,9 @@ export class SourceRenderer implements SceneGfx {
         // Make the reflection view a bit cheaper.
         this.reflectViewRenderer.drawProjectedShadows = false;
         this.reflectViewRenderer.pvsFallback = false;
-        this.reflectViewRenderer.renderObjectMask &= ~(RenderObjectKind.DetailProps);
+        // Source's r_waterforcereflectentities defaults off too.
+        this.reflectViewRenderer.renderObjectMask &= ~(RenderObjectKind.DetailProps | RenderObjectKind.Entities);
+        this.reflectViewRenderer.resolutionScale = 0.5;
 
         this.renderHelper = new GfxRenderHelper(renderContext.device, sceneContext, renderContext.renderCache);
 
@@ -1945,6 +1985,7 @@ export class SourceRenderer implements SceneGfx {
         this.mainViewRenderer.mainView.finishSetup();
 
         renderContext.currentPointCamera = null;
+        renderContext.waterSurfaceVisible = false;
 
         this.movement();
 
@@ -1960,7 +2001,8 @@ export class SourceRenderer implements SceneGfx {
         this.mainViewRenderer.prepareToRender(this, null);
 
         // Reflection is only supported on the first BSP renderer (maybe we should just kill the concept of having multiple...)
-        if (this.renderContext.enableExpensiveWater && this.mainViewRenderer.drawWorld && this.bspRenderers[0].bsp.leafwaterdata.length > 0) {
+        // waterSurfaceVisible was filled in by the main view prepare just above.
+        if (this.renderContext.enableExpensiveWater && this.mainViewRenderer.drawWorld && renderContext.waterSurfaceVisible && this.bspRenderers[0].bsp.leafwaterdata.length > 0) {
             const bspRenderer = this.bspRenderers[0], bsp = bspRenderer.bsp;
             const leafwater = bsp.findLeafWaterForPoint(this.mainViewRenderer.mainView.cameraPos, this.mainViewRenderer.mainView.pvs);
             if (leafwater !== null) {
@@ -2189,6 +2231,7 @@ export class SourceRenderer implements SceneGfx {
         this.renderHelper.prepareToRender();
         builder.execute();
         this.resetViews();
+        renderInstManager.reset();
 
         this.renderContext.debugStatistics.addToConsole(viewerInput);
         const camPositionX = this.mainViewRenderer.mainView.cameraPos[0].toFixed(2), camPositionY = this.mainViewRenderer.mainView.cameraPos[1].toFixed(2), camPositionZ = this.mainViewRenderer.mainView.cameraPos[2].toFixed(2);

@@ -194,7 +194,7 @@ export class NoclipRenderer {
         this.dataFetcher = new DataFetcher();
     }
 
-    public async loadBSP(bspBytes: Uint8Array, mapName: string): Promise<void> {
+    public async loadBSP(bspBytes: Uint8Array, mapName: string, onPhase: (name: string) => void = () => {}): Promise<void> {
         this.filesystem = new SourceFileSystem(this.dataFetcher);
         const csspak = new CSPakMount();
         this.filesystem.loose.push(csspak);
@@ -226,6 +226,7 @@ export class NoclipRenderer {
         // again here would double-allocate ~2 GB on big maps and OOM the tab.
         const bspSlice = ArrayBufferSlice.fromView(bspBytes);
         const bspFile = new BSPFile(bspSlice, mapName, BSPFileVariant.Default);
+        onPhase("bsp lump parse");
 
         this.renderContext.toneMapParams.toneMapScale = 1.0;
         this.applySettingsToContext();
@@ -235,6 +236,7 @@ export class NoclipRenderer {
             await this.renderContext.materialCache.bindLocalCubemap(bspFile.cubemaps[0]);
 
         const bspRenderer = new BSPRenderer(this.renderContext, bspFile);
+        onPhase("bsp renderer build (entities, props)");
         const worldspawn = bspRenderer.getWorldSpawn();
         if (worldspawn.skyname)
             this.renderer.skyboxRenderer = new SkyboxRenderer(
@@ -242,6 +244,7 @@ export class NoclipRenderer {
                 worldspawn.skyname,
             );
         await bspRenderer.materialsLoaded();
+        onPhase("material + texture fetch");
         this.renderer.bspRenderers.push(bspRenderer);
     }
 

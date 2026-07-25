@@ -474,6 +474,10 @@ export class Material_Water extends BaseMaterial {
     public setOnRenderInst(renderContext: SourceRenderContext, renderInst: GfxRenderInst, lightmapPageIndex: number | null = null): void {
         assert(this.isMaterialLoaded());
 
+        // Reached only once the surface has passed PVS and frustum culling.
+        // isMaterialVisible rejects the reflection view, so this can't self-trigger.
+        renderContext.waterSurfaceVisible = true;
+
         this.setupOverrideSceneParams(renderContext, renderInst);
 
         const textureMappings = MaterialUtil.textureMappings;

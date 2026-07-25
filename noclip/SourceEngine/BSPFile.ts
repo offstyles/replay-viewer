@@ -1492,6 +1492,7 @@ export class BSPFile {
             index: number;
             texinfo: number;
             vertnormalBase: number;
+            centroid?: vec3 | null;
         }
 
         const faces: Face[] = [];
@@ -1546,7 +1547,23 @@ export class BSPFile {
             this.lightmapPacker.allocate(lightmapData);
             this.lightmapData[i] = lightmapData;
 
-            faces.push({ index: i, texinfo, vertnormalBase });
+            // Displacements aren't in leaffaces at parse time (they get linked in by
+            // bbox after their surface is built, further down), so they'd all share the
+            // "no cluster" key below and merge into one map-wide surface. Keep a
+            // centroid of the base face to derive a spatial key from instead.
+            let centroid: vec3 | null = null;
+            if (facelist.getInt16(idx + 0x0C, true) >= 0 && numedges > 0) {
+                centroid = vec3.create();
+                for (let e = 0; e < numedges; e++) {
+                    const vi = vertindices[firstedge + e];
+                    centroid[0] += vertexes[vi * 3 + 0];
+                    centroid[1] += vertexes[vi * 3 + 1];
+                    centroid[2] += vertexes[vi * 3 + 2];
+                }
+                vec3.scale(centroid, centroid, 1 / numedges);
+            }
+
+            faces.push({ index: i, texinfo, vertnormalBase, centroid });
         }
 
         const [leafsLump, leafsVersion] = getLumpDataEx(LumpType.LEAFS);
@@ -1683,8 +1700,39 @@ export class BSPFile {
             });
         }
 
-        // Sort faces by texinfo to prepare for splitting into surfaces.
-        faces.sort((a, b) => texinfos[a.texinfo].texName.localeCompare(texinfos[b.texinfo].texName));
+        // Which cluster each face lives in, for the sort and merge below. Faces reachable
+        // from more than one leaf take the first; faces in no leaf get -1.
+        const faceToCluster = new Int32Array(numfaces).fill(-1);
+        for (let i = 0; i < this.leaflist.length; i++) {
+            const leaf = this.leaflist[i];
+            for (let j = 0; j < leaf.faces.length; j++) {
+                const faceIdx = leaf.faces[j];
+                if (faceToCluster[faceIdx] === -1)
+                    faceToCluster[faceIdx] = leaf.cluster;
+            }
+        }
+
+        // Displacements land here: no leaffaces entry yet, but a centroid we can locate.
+        for (let i = 0; i < faces.length; i++) {
+            const face = faces[i];
+            if (faceToCluster[face.index] !== -1 || face.centroid == null)
+                continue;
+            const leaf = this.queryPoint(face.centroid);
+            if (leaf !== null)
+                faceToCluster[face.index] = leaf.cluster;
+        }
+
+        // Sort by cluster first, then texinfo. Sorting by material alone let the merge
+        // below fuse every face sharing a material into one surface spanning the whole
+        // map, which drew in full whenever any part of it was visible — throwing away
+        // everything the PVS had just worked out. Keying on cluster bounds each surface
+        // to one PVS unit, which is the granularity visibility is decided at anyway.
+        faces.sort((a, b) => {
+            const clusterDiff = faceToCluster[a.index] - faceToCluster[b.index];
+            if (clusterDiff !== 0)
+                return clusterDiff;
+            return texinfos[a.texinfo].texName.localeCompare(texinfos[b.texinfo].texName);
+        });
 
         this.faceInfos = nArray(numfaces, () => new BSPFaceInfo());
 
@@ -1739,6 +1787,8 @@ export class BSPFile {
                 else if (this.lightmapData[prevFace.index].pageIndex !== this.lightmapData[face.index].pageIndex)
                     canMerge = false;
                 else if (faceToModelIdx[prevFace.index] !== faceToModelIdx[face.index])
+                    canMerge = false;
+                else if (faceToCluster[prevFace.index] !== faceToCluster[face.index])
                     canMerge = false;
 
                 if (canMerge)
@@ -2065,6 +2115,44 @@ export class BSPFile {
         this.indexData = indexBuffer.finalize();
     }
 
+    // Per node: does its subtree contain any leaf with leafwater? Built lazily.
+    private nodeHasLeafWater: Uint8Array | null = null;
+
+    private childHasLeafWater(dst: Uint8Array, child: number): boolean {
+        if (child < 0)
+            return this.leaflist[-child - 1].leafwaterdata !== -1;
+        return dst[child] === 1;
+    }
+
+    private buildNodeHasLeafWater(): Uint8Array {
+        const dst = new Uint8Array(this.nodelist.length);
+        if (this.nodelist.length === 0)
+            return dst;
+
+        // Post-order walk, iterative to keep large maps off the JS stack.
+        const visited = new Uint8Array(this.nodelist.length);
+        const stack: number[] = [0];
+        while (stack.length > 0) {
+            const nodeid = stack[stack.length - 1];
+            const node = this.nodelist[nodeid];
+
+            if (visited[nodeid] === 0) {
+                visited[nodeid] = 1;
+                if (node.child0 >= 0)
+                    stack.push(node.child0);
+                if (node.child1 >= 0)
+                    stack.push(node.child1);
+                continue;
+            }
+
+            stack.pop();
+            const has = this.childHasLeafWater(dst, node.child0) || this.childHasLeafWater(dst, node.child1);
+            dst[nodeid] = has ? 1 : 0;
+        }
+
+        return dst;
+    }
+
     private findLeafWaterForPointR(p: ReadonlyVec3, pvs: BitMap, nodeid: number): BSPLeafWaterData | null {
         if (nodeid < 0) {
             const leafidx = -nodeid - 1;
@@ -2075,6 +2163,9 @@ export class BSPFile {
             }
             return null;
         }
+
+        if (this.nodeHasLeafWater![nodeid] === 0)
+            return null;
 
         const node = this.nodelist[nodeid];
         const dot = node.plane.distanceVec3(p);
@@ -2095,6 +2186,9 @@ export class BSPFile {
     public findLeafWaterForPoint(p: ReadonlyVec3, pvs: BitMap): BSPLeafWaterData | null {
         if (this.leafwaterdata.length === 0)
             return null;
+
+        if (this.nodeHasLeafWater === null)
+            this.nodeHasLeafWater = this.buildNodeHasLeafWater();
 
         return this.findLeafWaterForPointR(p, pvs, 0);
     }

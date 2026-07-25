@@ -499,6 +499,12 @@ class GfxImplP_GL implements GfxSwapChain, GfxDevice {
     private _currentSampleCount: number = -1;
     private _currentPipeline!: GfxRenderPipelineP_GL;
     private _currentIndexBufferByteOffset: number | null = null;
+    // Vertex input state currently recorded in the bound VAO.
+    private _currentVertexInputLayout: GfxInputLayout | null = null;
+    private _currentVertexBufferBuffers: (GfxBuffer | null)[] = [];
+    private _currentVertexBufferByteOffsets: number[] = [];
+    private _currentVertexBufferCount: number = -1;
+    private _currentVertexInputIndexBuffer: GfxBuffer | null = null;
     private _currentMegaState: GfxMegaStateDescriptor = copyMegaState(defaultMegaState);
     private _currentSamplers: (WebGLSampler | null)[] = [];
     private _currentTextures: (WebGLTexture | null)[] = [];
@@ -1205,6 +1211,8 @@ class GfxImplP_GL implements GfxSwapChain, GfxDevice {
 
     public destroyBuffer(o: GfxBuffer): void {
         const { gl_buffer_pages } = o as GfxBufferP_GL;
+        // Deleting a buffer detaches it from any VAO it was bound into.
+        this._invalidateVertexInputCache();
         for (let i = 0; i < gl_buffer_pages.length; i++)
             this.gl.deleteBuffer(gl_buffer_pages[i]);
         if (this._resourceCreationTracker !== null)
@@ -1251,6 +1259,7 @@ class GfxImplP_GL implements GfxSwapChain, GfxDevice {
 
     public destroyInputLayout(o: GfxInputLayout): void {
         const inputLayout = o as GfxInputLayoutP_GL;
+        this._invalidateVertexInputCache();
         if (this._currentBoundVAO === inputLayout.vao) {
             this.gl.bindVertexArray(null);
             this._currentBoundVAO = null;
@@ -1300,6 +1309,7 @@ class GfxImplP_GL implements GfxSwapChain, GfxDevice {
     public createRenderPass(descriptor: GfxRenderPassDescriptor): GfxRenderPass {
         assert(this._currentRenderPassDescriptor === null);
         this._currentRenderPassDescriptor = descriptor;
+        this._invalidateVertexInputCache();
 
         const { colorAttachments, depthStencilAttachment } = descriptor;
         this._setRenderPassParametersBegin(colorAttachments);
@@ -2345,8 +2355,59 @@ class GfxImplP_GL implements GfxSwapChain, GfxDevice {
         }
     }
 
+    private _invalidateVertexInputCache(): void {
+        this._currentVertexInputLayout = null;
+        this._currentVertexBufferCount = -1;
+        this._currentVertexInputIndexBuffer = null;
+    }
+
+    private _vertexInputMatchesCache(inputLayout: GfxInputLayout | null, vertexBuffers: (GfxVertexBufferDescriptor | null)[] | null, indexBuffer: GfxIndexBufferDescriptor | null): boolean {
+        if (this._currentVertexInputLayout !== inputLayout || inputLayout === null)
+            return false;
+
+        const count = vertexBuffers !== null ? vertexBuffers.length : 0;
+        if (this._currentVertexBufferCount !== count)
+            return false;
+
+        for (let i = 0; i < count; i++) {
+            const vertexBuffer = vertexBuffers![i];
+            const buffer = vertexBuffer !== null ? vertexBuffer.buffer : null;
+            if (this._currentVertexBufferBuffers[i] !== buffer)
+                return false;
+            const byteOffset = vertexBuffer !== null ? (vertexBuffer.byteOffset ?? 0) : 0;
+            if (this._currentVertexBufferByteOffsets[i] !== byteOffset)
+                return false;
+        }
+
+        const indexGfxBuffer = indexBuffer !== null ? indexBuffer.buffer : null;
+        if (this._currentVertexInputIndexBuffer !== indexGfxBuffer)
+            return false;
+
+        const indexByteOffset = indexBuffer !== null ? (indexBuffer.byteOffset ?? 0) : null;
+        return this._currentIndexBufferByteOffset === indexByteOffset;
+    }
+
+    private _recordVertexInputCache(inputLayout: GfxInputLayout | null, vertexBuffers: (GfxVertexBufferDescriptor | null)[] | null, indexBuffer: GfxIndexBufferDescriptor | null): void {
+        this._currentVertexInputLayout = inputLayout;
+
+        const count = vertexBuffers !== null ? vertexBuffers.length : 0;
+        this._currentVertexBufferCount = count;
+        for (let i = 0; i < count; i++) {
+            const vertexBuffer = vertexBuffers![i];
+            this._currentVertexBufferBuffers[i] = vertexBuffer !== null ? vertexBuffer.buffer : null;
+            this._currentVertexBufferByteOffsets[i] = vertexBuffer !== null ? (vertexBuffer.byteOffset ?? 0) : 0;
+        }
+
+        this._currentVertexInputIndexBuffer = indexBuffer !== null ? indexBuffer.buffer : null;
+    }
+
     public setVertexInput(inputLayout_: GfxInputLayout | null, vertexBuffers: (GfxVertexBufferDescriptor | null)[] | null, indexBuffer: GfxIndexBufferDescriptor | null): void {
         assert(this._currentPipeline.inputLayout === inputLayout_);
+
+        // Attribute pointers and the element array binding live in the VAO, so an
+        // unchanged input already has exactly the state we'd re-specify.
+        if (this._vertexInputMatchesCache(inputLayout_, vertexBuffers, indexBuffer))
+            return;
 
         if (inputLayout_ !== null) {
             const inputLayout = inputLayout_ as GfxInputLayoutP_GL;
@@ -2387,6 +2448,8 @@ class GfxImplP_GL implements GfxSwapChain, GfxDevice {
             this._setVAO(null);
             this._currentIndexBufferByteOffset = null;
         }
+
+        this._recordVertexInputCache(inputLayout_, vertexBuffers, indexBuffer);
     }
 
     public setStencilRef(value: number): void {
