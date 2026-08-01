@@ -1,7 +1,7 @@
 // @ts-nocheck
 
 import { ReadonlyMat4, mat4, vec2, vec3 } from "gl-matrix";
-import { Color, TransparentBlack, White, colorCopy, colorNewCopy, colorNewFromRGBA } from "../../Color.js";
+import { Color, TransparentBlack, White, colorCopy, colorMult, colorNewCopy, colorNewFromRGBA } from "../../Color.js";
 import { dfRange, dfShow } from "../../DebugFloaters.js";
 import type { AABB } from "../../Geometry.js";
 import { scaleMatrix } from "../../MathHelpers.js";
@@ -382,6 +382,7 @@ export abstract class BaseMaterial {
 
     protected loaded = false;
     protected proxyDriver: P.MaterialProxyDriver | null = null;
+    private vmtColor = colorNewCopy(White);
     protected texCoord0Scale = vec2.create();
     protected isAdditive = false;
     protected isToneMapped = true;
@@ -392,6 +393,7 @@ export abstract class BaseMaterial {
 
     public async init(renderContext: SourceRenderContext) {
         this.setupParametersFromVMT(renderContext);
+        this.paramGetVector('$color').fillColor(this.vmtColor, 1.0);
         if (this.vmt.proxies !== undefined)
             this.proxyDriver = renderContext.materialProxySystem.createProxyDriver(this, this.vmt.proxies);
 
@@ -807,7 +809,8 @@ export abstract class BaseMaterial {
         if (this.entityParams !== null) {
             // Update our color/alpha based on entity params.
             const color = assertExists(this.paramGetVector('$color'));
-            color.setFromColor(this.entityParams.blendColor);
+            colorMult(MaterialUtil.scratchColor, this.entityParams.blendColor, this.vmtColor);
+            color.setFromColor(MaterialUtil.scratchColor);
 
             const alpha = assertExists(this.param['$alpha']) as P.ParameterNumber;
             alpha.value = this.entityParams.blendColor.a;

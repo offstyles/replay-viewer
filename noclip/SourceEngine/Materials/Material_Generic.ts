@@ -1363,20 +1363,8 @@ export class Material_Generic extends BaseMaterial {
             this.shaderInstance.setDefineBool('USE_SEAMLESS_BASE', true);
         }
 
-        // Modulation color is used differently between lightmapped and non-lightmapped.
-        // In vertexlit / unlit, then the modulation color is multiplied in with the texture (and possibly blended).
-        // In lightmappedgeneric, then the modulation color is used as the diffuse lightmap scale, and contains the
-        // lightmap scale factor.
-        // USE_MODULATIONCOLOR_COLOR only handles the vertexlit / unlit case. USE_LIGHTMAP will also use the modulation
-        // color if necessary.
-        if (this.wantsLightmap) {
-            this.shaderInstance.setDefineBool('USE_MODULATIONCOLOR_COLOR', false);
-            // TODO(jstpierre): Figure out if modulation alpha is used in lightmappedgeneric.
-            this.shaderInstance.setDefineBool('USE_MODULATIONCOLOR_ALPHA', false);
-        } else {
-            this.shaderInstance.setDefineBool('USE_MODULATIONCOLOR_COLOR', true);
-            this.shaderInstance.setDefineBool('USE_MODULATIONCOLOR_ALPHA', true);
-        }
+        this.shaderInstance.setDefineBool('USE_MODULATIONCOLOR_COLOR', true);
+        this.shaderInstance.setDefineBool('USE_MODULATIONCOLOR_ALPHA', !this.wantsLightmap);
 
         if (this.hasVertexColorInput && (this.paramGetBoolean('$vertexcolor') || this.paramGetBoolean('$vertexalpha')))
             this.shaderInstance.setDefineBool('USE_VERTEX_COLOR', true);
