@@ -13,7 +13,7 @@ const emit = defineEmits(['close', 'toggle-stats', 'toggle-settings', 'toggle-in
 const isScrubbing = ref(false)
 const scrubberValue = ref(0)
 const isPlaying = ref(true)
-const selectedSpeed = ref('1')
+const speedFocused = ref(false)
 
 // Auto-fade: hide controls after 3s of no mouse movement
 const isVisible = ref(true)
@@ -28,7 +28,7 @@ function resetFadeTimer() {
   if (fadeTimer !== null) clearTimeout(fadeTimer)
   fadeTimer = window.setTimeout(() => {
     // Don't hide if scrubbing or paused
-    if (!isScrubbing.value && isPlaying.value) {
+    if (!isScrubbing.value && isPlaying.value && !speedFocused.value) {
       isVisible.value = false
     }
   }, 3000)
@@ -69,10 +69,12 @@ function onScrubChange() {
 }
 
 function onSpeedChange(e: Event) {
-  const val = parseFloat((e.target as HTMLSelectElement).value)
+  const select = e.target as HTMLSelectElement
+  const val = parseFloat(select.value)
   if (!Number.isNaN(val)) {
     props.playback.setPlaybackRate(val)
   }
+  select.blur()
 }
 
 function toggleCamera() {
@@ -121,7 +123,6 @@ function updateScrubber() {
     scrubberValue.value = props.playback.state.tick
   }
   isPlaying.value = props.playback.isPlaying
-  selectedSpeed.value = props.playback.playbackRate.toString()
 }
 
 defineExpose({ updateScrubber })
@@ -168,14 +169,15 @@ defineExpose({ updateScrubber })
 
         <!-- Speed -->
         <select
-          :value="selectedSpeed"
           @change="onSpeedChange"
+          @focus="speedFocused = true"
+          @blur="speedFocused = false; showControls()"
           class="bg-main-600 hover:bg-main-500 text-white text-xs font-mono rounded px-2 py-1.5 cursor-pointer transition-colors border-none outline-none"
           title="Playback speed"
         >
           <option value="0.25">0.25x</option>
           <option value="0.5">0.5x</option>
-          <option value="1">1x</option>
+          <option value="1" selected>1x</option>
           <option value="2">2x</option>
           <option value="5">5x</option>
         </select>

@@ -45,7 +45,7 @@ function isPressed(flag: number): boolean {
     <div class="absolute bottom-24 left-1/2 -translate-x-1/2 drop-shadow-lg tabular-nums">
       <div class="relative text-xl font-bold leading-none">
         {{ speed }}
-        <span class="absolute left-full top-1/2 -translate-y-1/2 ml-1 text-xs font-normal text-gray-400">u/s</span>
+        <span class="absolute left-full top-1/2 -translate-y-1/2 ml-1 text-xs font-normal text-gray-400 whitespace-nowrap">u/s</span>
       </div>
     </div>
 
