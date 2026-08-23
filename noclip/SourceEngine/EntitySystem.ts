@@ -274,8 +274,10 @@ export class BaseEntity {
     }
 
     private findSequenceLabel(label: string): number {
+        if (this.modelStudio === null)
+            return -1;
         label = label.toLowerCase();
-        return this.modelStudio!.modelData.seq.findIndex((seq) => seq.label === label);
+        return this.modelStudio.modelData.seq.findIndex((seq) => seq.label === label);
     }
 
     // TODO(jstpierre): Move all this to a baseanimation type class?
@@ -3770,7 +3772,8 @@ export class env_projectedtexture extends BaseEntity {
         const spawnflags: SpawnFlags = Number(entity.spawnflags);
         this.enabled = !!(spawnflags & SpawnFlags.ENABLED);
 
-        this.fetchTexture(renderContext, entity.texturename);
+        if (entity.texturename)
+            this.fetchTexture(renderContext, entity.texturename);
 
         this.registerInput('turnon', this.input_turnon.bind(this));
         this.registerInput('turnoff', this.input_turnoff.bind(this));
