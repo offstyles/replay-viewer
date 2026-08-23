@@ -8,7 +8,7 @@ import { Vec3NegX, Vec3NegY, Vec3NegZ, Vec3UnitX, Vec3UnitY, Vec3UnitZ, Vec3Zero
 import { fillVec4, fillVec3v, fillColor } from "../../gfx/helpers/UniformBufferHelpers.js";
 import { GfxrResolveTextureID } from "../../gfx/render/GfxRenderGraph.js";
 import { nArray, assertExists } from "../../util.js";
-import { BSPFile, Cubemap, WorldLight, WorldLightType, AmbientCube, BSPLeaf, WorldLightFlags } from "../BSPFile.js";
+import { BSPFile, Cubemap, WorldLight, WorldLightType, AmbientCube, BSPLeaf, WorldLightFlags, TraceResult, BSPLeafContents } from "../BSPFile.js";
 import { BSPRenderer, SourceEngineView, SourceEngineViewType } from "../Main.js";
 import type { VTF } from "../VTF.js";
 
@@ -302,7 +302,7 @@ export class LightCache {
         }
     }
 
-    private cacheWorldLights(worldLights: WorldLight[], hasAmbientLeafLighting: boolean): void {
+    private cacheWorldLights(bspfile: BSPFile, worldLights: WorldLight[], hasAmbientLeafLighting: boolean, canTrace: boolean): void {
         for (let i = 0; i < this.worldLights.length; i++)
             this.worldLights[i].reset();
 
@@ -312,12 +312,22 @@ export class LightCache {
             if (hasAmbientLeafLighting && !!(light.flags & WorldLightFlags.InAmbientCube))
                 continue;
 
-            vec3.sub(scratchVec3, light.pos, this.pos);
-            const ratio = worldLightDistanceFalloff(light, scratchVec3);
-            vec3.normalize(scratchVec3, scratchVec3);
+            let ratio: number;
+            if (light.type === WorldLightType.SkyLight) {
+                if (!canTrace)
+                    continue;
+                vec3.scaleAndAdd(scratchVec3, this.pos, light.normal, -65536.0);
+                ratio = bspfile.traceLine(this.pos, scratchVec3) === TraceResult.Sky ? 1.0 : 0.0;
+            } else {
+                vec3.sub(scratchVec3, light.pos, this.pos);
+                ratio = worldLightDistanceFalloff(light, scratchVec3);
+            }
             const intensity = ratio * vec3.dot(light.intensity, ntscGrayscale);
 
             if (intensity <= 0.0)
+                continue;
+
+            if (canTrace && light.type !== WorldLightType.SkyLight && bspfile.traceLine(this.pos, light.pos) !== TraceResult.Clear)
                 continue;
 
             // Look for a place to insert.
@@ -354,8 +364,9 @@ export class LightCache {
         // Reset ambient cube to leaf lighting.
         const hasAmbientLeafLighting = this.cacheAmbientLight(leaf);
 
-        // Now go through and cache world lights.
-        this.cacheWorldLights(bspfile.worldlights, hasAmbientLeafLighting);
+        // Lighting origins that land in a solid leaf would see every light as occluded.
+        const canTrace = !(leaf.contents & BSPLeafContents.Solid);
+        this.cacheWorldLights(bspfile, bspfile.worldlights, hasAmbientLeafLighting, canTrace);
     }
 
     public fillAmbientCube(d: Float32Array, offs: number): number {

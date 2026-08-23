@@ -97,7 +97,11 @@ export interface BSPLeafAmbientSample {
     pos: vec3;
 }
 
-enum BSPLeafContents {
+export const enum TraceResult {
+    Clear, Blocked, Sky,
+}
+
+export enum BSPLeafContents {
     Solid     = 0x001,
     Water     = 0x010,
     TestWater = 0x100,
@@ -111,6 +115,7 @@ export interface BSPLeaf {
     faces: number[];
     leafwaterdata: number;
     contents: BSPLeafContents;
+    hasSkyFace: boolean;
 }
 
 interface BSPLeafWaterData {
@@ -1497,6 +1502,7 @@ export class BSPFile {
 
         const faces: Face[] = [];
         let numfaces = 0;
+        const faceIsSky = new Uint8Array(facelist.byteLength / 0x38);
 
         // Normals are packed in surface order (???), so we need to unpack these before the initial sort.
         let vertnormalIdx = 0;
@@ -1512,8 +1518,10 @@ export class BSPFile {
             const vertnormalBase = vertnormalIdx;
             vertnormalIdx += numedges;
 
-            if (!!(tex.flags & (TexinfoFlags.SKY | TexinfoFlags.SKY2D)))
+            if (!!(tex.flags & (TexinfoFlags.SKY | TexinfoFlags.SKY2D))) {
+                faceIsSky[i] = 1;
                 continue;
+            }
 
             const lightofs = facelist.getInt32(idx + 0x14, true);
             const m_LightmapTextureSizeInLuxels = nArray(2, (i) => facelist!.getUint32(idx + 0x24 + i * 4, true));
@@ -1693,10 +1701,11 @@ export class BSPFile {
             }
 
             const leafFaces = leaffacelist.subarray(firstleafface, firstleafface + numleaffaces);
+            const hasSkyFace = leafFaces.some((faceIdx) => faceIsSky[faceIdx] === 1);
             this.leaflist.push({
                 bbox, cluster, area, ambientLightSamples,
                 faces: Array.from(leafFaces),
-                leafwaterdata, contents,
+                leafwaterdata, contents, hasSkyFace,
             });
         }
 
@@ -2191,6 +2200,41 @@ export class BSPFile {
             this.nodeHasLeafWater = this.buildNodeHasLeafWater();
 
         return this.findLeafWaterForPointR(p, pvs, 0);
+    }
+
+    // Walks the segment p0->p1 through the tree. Returns Clear if no solid leaf is
+    // crossed, Sky if the first solid leaf is entered from a leaf that borders the
+    // sky, Blocked otherwise.
+    public traceLine(p0: ReadonlyVec3, p1: ReadonlyVec3): TraceResult {
+        this.traceLastLeafHadSky = false;
+        return this.traceLineR(0, p0, p1);
+    }
+
+    private traceLastLeafHadSky = false;
+    private traceLineR(nodeid: number, p0: ReadonlyVec3, p1: ReadonlyVec3): TraceResult {
+        if (nodeid < 0) {
+            const leaf = this.leaflist[-nodeid - 1];
+            if (!!(leaf.contents & BSPLeafContents.Solid))
+                return this.traceLastLeafHadSky ? TraceResult.Sky : TraceResult.Blocked;
+            this.traceLastLeafHadSky = leaf.hasSkyFace;
+            return TraceResult.Clear;
+        }
+
+        const node = this.nodelist[nodeid];
+        const d0 = node.plane.distanceVec3(p0);
+        const d1 = node.plane.distanceVec3(p1);
+        if (d0 >= 0.0 && d1 >= 0.0)
+            return this.traceLineR(node.child0, p0, p1);
+        if (d0 < 0.0 && d1 < 0.0)
+            return this.traceLineR(node.child1, p0, p1);
+
+        const near = d0 >= 0.0 ? node.child0 : node.child1;
+        const far = d0 >= 0.0 ? node.child1 : node.child0;
+        const mid = vec3.lerp(vec3.create(), p0, p1, d0 / (d0 - d1));
+        const result = this.traceLineR(near, p0, mid);
+        if (result !== TraceResult.Clear)
+            return result;
+        return this.traceLineR(far, mid, p1);
     }
 
     public queryPoint(p: ReadonlyVec3, nodeid: number = 0): BSPLeaf | null {
