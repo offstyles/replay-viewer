@@ -262,8 +262,32 @@ export class LightCache {
     private worldLights: LightCacheWorldLight[] = nArray(4, () => new LightCacheWorldLight());
     private ambientCube: AmbientCube = newAmbientCube();
 
-    constructor(bspRenderer: BSPRenderer, private pos: ReadonlyVec3) {
+    constructor(bspRenderer: BSPRenderer, pos: ReadonlyVec3) {
+        this.pos = vec3.clone(pos);
         this.calc(bspRenderer);
+    }
+
+    private pos: vec3;
+
+    // Lighting origins often sit on or inside a brush (prop base on the floor,
+    // hedge on a ledge). Nudge out to the nearest non-solid leaf.
+    private findNonSolidLeaf(bspfile: BSPFile): BSPLeaf {
+        const leaf = assertExists(bspfile.queryPoint(this.pos));
+        if (!(leaf.contents & BSPLeafContents.Solid))
+            return leaf;
+
+        for (const step of [2, 8, 16, 32]) {
+            for (const dir of ambientCubeDirections) {
+                vec3.scaleAndAdd(scratchVec3, this.pos, dir, step);
+                const candidate = bspfile.queryPoint(scratchVec3);
+                if (candidate !== null && !(candidate.contents & BSPLeafContents.Solid)) {
+                    vec3.copy(this.pos, scratchVec3);
+                    return candidate;
+                }
+            }
+        }
+
+        return leaf;
     }
 
     public debugDrawLights(view: SourceEngineView): void {
@@ -356,8 +380,7 @@ export class LightCache {
     private calc(bspRenderer: BSPRenderer): void {
         const bspfile = bspRenderer.bsp;
 
-        // Calculate leaf information.
-        const leaf = assertExists(bspfile.queryPoint(this.pos));
+        const leaf = this.findNonSolidLeaf(bspfile);
 
         this.envCubemap = findEnvCubemapTexture(bspfile, this.pos);
 
