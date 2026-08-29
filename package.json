@@ -13,6 +13,11 @@
   "scripts": {
     "type-check": "vue-tsc --noEmit"
   },
+  "dependencies": {
+    "crc-32": "^1.2.2",
+    "lzma1": "^0.3.0",
+    "pako": "^2.1.0"
+  },
   "peerDependencies": {
     "gl-matrix": "^3.4.4",
     "vue": "^3.5.13"
@@ -22,6 +27,7 @@
     "gl-matrix": "^3.4.4",
     "typescript": "~5.8.0",
     "vue": "^3.5.13",
-    "vue-tsc": "^2.2.8"
+    "vue-tsc": "^2.2.8",
+    "@types/pako": "^2.0.4"
   }
 }
