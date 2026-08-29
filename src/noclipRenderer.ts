@@ -58,8 +58,14 @@ function isCSPakJunkPath(path: string): boolean {
     return false;
 }
 
+const CSPAK_BATCH_MAX = 64;
+const CSPAK_BATCH_DELAY_MS = 10;
+const CSPAK_MISSING = 0xFFFFFFFF;
+
 class CSPakMount extends LooseMount {
     private missCache = new Set<string>();
+    private pending = new Map<string, ((data: ArrayBufferSlice | null) => void)[]>();
+    private flushTimer: ReturnType<typeof setTimeout> | null = null;
 
     constructor() {
         super("", []);
@@ -74,44 +80,103 @@ class CSPakMount extends LooseMount {
         return !this.missCache.has(resolvedPath);
     }
 
-    public override async fetchEntryData(
+    public override fetchEntryData(
         _dataFetcher: DataFetcher,
         resolvedPath: string,
     ): Promise<ArrayBufferSlice> {
         const NULL = null as unknown as ArrayBufferSlice;
-        if (isCSPakJunkPath(resolvedPath)) return NULL;
-        if (this.missCache.has(resolvedPath)) return NULL;
-        const url = `${CSPAK_BASE}/${resolvedPath}`;
+        if (isCSPakJunkPath(resolvedPath)) return Promise.resolve(NULL);
+        if (this.missCache.has(resolvedPath)) return Promise.resolve(NULL);
 
+        return new Promise((resolve) => {
+            const waiters = this.pending.get(resolvedPath);
+            if (waiters !== undefined) {
+                waiters.push(resolve as (data: ArrayBufferSlice | null) => void);
+                return;
+            }
+            this.pending.set(resolvedPath, [resolve as (data: ArrayBufferSlice | null) => void]);
+            if (this.pending.size >= CSPAK_BATCH_MAX) {
+                this.flush();
+            } else if (this.flushTimer === null) {
+                this.flushTimer = setTimeout(() => this.flush(), CSPAK_BATCH_DELAY_MS);
+            }
+        });
+    }
+
+    private flush(): void {
+        if (this.flushTimer !== null) {
+            clearTimeout(this.flushTimer);
+            this.flushTimer = null;
+        }
+        const batch = this.pending;
+        this.pending = new Map();
+        if (batch.size > 0)
+            this.fetchBatch(batch);
+    }
+
+    private async fetchBatch(batch: Map<string, ((data: ArrayBufferSlice | null) => void)[]>): Promise<void> {
+        const paths = [...batch.keys()];
+        const buf = await this.postBatch(paths);
+        const results = buf !== null ? this.parseBatch(buf, paths) : null;
+        for (let i = 0; i < paths.length; i++) {
+            const data = results !== null ? results[i] : null;
+            if (results !== null && data === null)
+                this.missCache.add(paths[i]);
+            for (const resolve of batch.get(paths[i])!)
+                resolve(data);
+        }
+    }
+
+    private async postBatch(paths: string[]): Promise<ArrayBuffer | null> {
         const maxAttempts = 3;
         for (let attempt = 0; attempt < maxAttempts; attempt++) {
             let resp: Response | null = null;
             let networkErr = false;
             try {
-                resp = await fetch(url, { credentials: 'include' });
+                resp = await fetch(`${CSPAK_BASE}/batch`, {
+                    method: 'POST',
+                    credentials: 'include',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(paths),
+                });
             } catch {
                 networkErr = true;
             }
 
             if (resp !== null) {
-                if (resp.status === 404 || resp.status === 410) {
-                    this.missCache.add(resolvedPath);
-                    return NULL;
-                }
                 if (resp.ok)
-                    return new ArrayBufferSlice(await resp.arrayBuffer());
+                    return resp.arrayBuffer();
                 if (resp.status < 500 && resp.status !== 408 && resp.status !== 429)
-                    return NULL;
+                    return null;
             }
 
             if (attempt < maxAttempts - 1) {
                 const backoffMs = 100 * Math.pow(3, attempt);
                 await new Promise((r) => setTimeout(r, backoffMs));
             } else if (networkErr || (resp && !resp.ok)) {
-                console.warn(`[csspak] giving up on ${resolvedPath} after ${maxAttempts} attempts`);
+                console.warn(`[csspak] giving up on batch of ${paths.length} after ${maxAttempts} attempts`);
             }
         }
-        return NULL;
+        return null;
+    }
+
+    private parseBatch(buf: ArrayBuffer, paths: string[]): (ArrayBufferSlice | null)[] | null {
+        const view = new DataView(buf);
+        const results: (ArrayBufferSlice | null)[] = [];
+        let offs = 0;
+        for (let i = 0; i < paths.length; i++) {
+            if (offs + 4 > buf.byteLength) return null;
+            const len = view.getUint32(offs, true);
+            offs += 4;
+            if (len === CSPAK_MISSING) {
+                results.push(null);
+                continue;
+            }
+            if (offs + len > buf.byteLength) return null;
+            results.push(new ArrayBufferSlice(buf, offs, len));
+            offs += len;
+        }
+        return results;
     }
 }
 
