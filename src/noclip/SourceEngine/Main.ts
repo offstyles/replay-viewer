@@ -804,7 +804,7 @@ export class BSPRenderer {
             this.models.push(modelRenderer);
         }
 
-        for (let i = 0; i < this.bsp.lightmapData.length; i++) {
+        for (let i = 0; i < this.bsp.faceInfos.length; i++) {
             const lightmapData = this.bsp.lightmapData[i];
             this.lightmapUpdaters[i] = lightmapData ? new FaceLightmapUpdater(lightmapData) : null;
         }
