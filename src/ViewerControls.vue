@@ -2,10 +2,12 @@
 import { ref, onMounted, onUnmounted, computed } from 'vue'
 import type { PlaybackEngine } from './playback'
 import type { Camera } from './camera'
+import type { RunTicks } from './zones'
 
 const props = defineProps<{
   playback: PlaybackEngine
   camera: Camera
+  runTicks: RunTicks | null
 }>()
 
 const emit = defineEmits<{
@@ -58,6 +60,12 @@ function formatTicks(ticks: number) {
 const timeDisplay = computed(() => formatTicks(scrubberValue.value))
 const totalTimeDisplay = computed(() => formatTicks(props.playback.state.totalTicks - 1))
 const previewTimeDisplay = computed(() => formatTicks(previewTick.value ?? 0))
+
+// Match 12px thumb travel.
+function tickPosition(tick: number) {
+  const frac = tick / (props.playback.state.totalTicks - 1)
+  return `calc(6px + ${frac} * (100% - 12px))`
+}
 
 function togglePlay() {
   props.playback.togglePlaying()
@@ -177,17 +185,31 @@ defineExpose({ updateScrubber, previewCanvas })
       <!-- Scrubber row -->
       <div class="flex items-center gap-3 mb-2">
         <span class="text-xs text-gray-400 font-mono w-12 text-right shrink-0">{{ timeDisplay }}</span>
-        <input
-          type="range"
-          min="0"
-          :max="playback.state.totalTicks - 1"
-          :value="scrubberValue"
-          @input="onScrubInput"
-          @change="onScrubChange"
-          @mousemove="onScrubHover"
-          @mouseleave="onScrubLeave"
-          class="scrubber flex-1 h-1 appearance-none bg-main-300/40 rounded outline-none cursor-pointer"
-        />
+        <div class="relative flex-1 flex items-center">
+          <template v-if="runTicks">
+            <div
+              class="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-0.5 h-3 rounded-sm pointer-events-none"
+              :style="{ left: tickPosition(runTicks.start), background: 'rgb(67, 210, 230)' }"
+              title="Run start"
+            />
+            <div
+              class="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-0.5 h-3 rounded-sm pointer-events-none"
+              :style="{ left: tickPosition(runTicks.end), background: 'rgb(165, 19, 194)' }"
+              title="Run end"
+            />
+          </template>
+          <input
+            type="range"
+            min="0"
+            :max="playback.state.totalTicks - 1"
+            :value="scrubberValue"
+            @input="onScrubInput"
+            @change="onScrubChange"
+            @mousemove="onScrubHover"
+            @mouseleave="onScrubLeave"
+            class="scrubber w-full h-1 appearance-none bg-main-300/40 rounded outline-none cursor-pointer"
+          />
+        </div>
         <span class="text-xs text-gray-400 font-mono w-12 shrink-0">{{ totalTimeDisplay }}</span>
       </div>
 

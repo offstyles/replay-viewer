@@ -9,6 +9,8 @@ export class ReplayData {
     buttons_array(): Int32Array;
     flags_array(): Int32Array;
     positions(): Float32Array;
+    postframes(): number;
+    preframes(): number;
     tick_count(): number;
     tick_rate(): number;
     time(): number;
@@ -32,6 +34,8 @@ export interface InitOutput {
     readonly replaydata_buttons_array: (a: number) => [number, number];
     readonly replaydata_flags_array: (a: number) => [number, number];
     readonly replaydata_positions: (a: number) => [number, number];
+    readonly replaydata_postframes: (a: number) => number;
+    readonly replaydata_preframes: (a: number) => number;
     readonly replaydata_tick_count: (a: number) => number;
     readonly replaydata_tick_rate: (a: number) => number;
     readonly replaydata_time: (a: number) => number;

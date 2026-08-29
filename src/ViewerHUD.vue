@@ -4,6 +4,7 @@ import type { PlaybackState } from './playback'
 import { IN_FORWARD, IN_BACK, IN_MOVELEFT, IN_MOVERIGHT, IN_JUMP, IN_DUCK } from './playback'
 import type { ReplayTime } from './types'
 import { formatRunTime } from './formatRunTime'
+import type { RunTicks } from './zones'
 
 const props = defineProps<{
   state: PlaybackState
@@ -11,6 +12,7 @@ const props = defineProps<{
   showInfo: boolean
   mapName: string
   time: ReplayTime | null
+  runTicks: RunTicks | null
 }>()
 
 const speed = computed(() => Math.round(props.state.speed).toString())
@@ -18,6 +20,14 @@ const speed = computed(() => Math.round(props.state.speed).toString())
 const runTime = computed(() =>
   props.time && props.time.time > 0 ? formatRunTime(props.time.time) : null,
 )
+
+const timer = computed(() => {
+  if (!props.runTicks) return null
+  const { start, end } = props.runTicks
+  const elapsed = Math.max(props.state.exactTick - start, 0) / props.state.tickRate
+  const finalTime = props.state.time > 0 ? props.state.time : (end - start) / props.state.tickRate
+  return formatRunTime(Math.min(elapsed, finalTime))
+})
 
 function isPressed(flag: number): boolean {
   return (props.state.buttons & flag) !== 0
@@ -41,8 +51,9 @@ function isPressed(flag: number): boolean {
       <div v-if="runTime" class="text-sm text-gray-300 tabular-nums">{{ runTime }}</div>
     </div>
 
-    <!-- Speed (centered above key display) -->
-    <div class="absolute bottom-24 left-1/2 -translate-x-1/2 drop-shadow-lg tabular-nums">
+    <!-- Timer + speed -->
+    <div class="absolute bottom-24 left-1/2 -translate-x-1/2 drop-shadow-lg tabular-nums flex flex-col items-center gap-1">
+      <div v-if="timer" class="text-lg font-semibold leading-none">{{ timer }}</div>
       <div class="relative text-xl font-bold leading-none">
         {{ speed }}
         <span class="absolute left-full top-1/2 -translate-y-1/2 ml-1 text-xs font-normal text-gray-400 whitespace-nowrap">u/s</span>

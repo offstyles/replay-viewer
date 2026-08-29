@@ -57,6 +57,20 @@ export class ReplayData {
     /**
      * @returns {number}
      */
+    postframes() {
+        const ret = wasm.replaydata_postframes(this.__wbg_ptr);
+        return ret >>> 0;
+    }
+    /**
+     * @returns {number}
+     */
+    preframes() {
+        const ret = wasm.replaydata_preframes(this.__wbg_ptr);
+        return ret >>> 0;
+    }
+    /**
+     * @returns {number}
+     */
     tick_count() {
         const ret = wasm.replaydata_tick_count(this.__wbg_ptr);
         return ret >>> 0;

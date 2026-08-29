@@ -12,7 +12,8 @@
     "tsconfig.json"
   ],
   "scripts": {
-    "type-check": "vue-tsc --noEmit"
+    "type-check": "vue-tsc --noEmit",
+    "build:wasm": "cd ../bhop-replay-viewer && wasm-pack build --target web --release && cp pkg/bhop_replay_viewer_wasm_bg.wasm pkg/bhop_replay_viewer_wasm_bg.wasm.d.ts pkg/bhop_replay_viewer_wasm.d.ts pkg/bhop_replay_viewer_wasm.js ../replay-viewer/src/wasm/"
   },
   "dependencies": {
     "lzma1": "^0.3.0",

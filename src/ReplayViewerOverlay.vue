@@ -13,7 +13,8 @@ import { fetchWithProgress } from "./fetchWithProgress";
 import { decompressBz2 } from "./decompressBz2";
 import ViewerSettings from "./ViewerSettings.vue";
 import type { ReplayTime } from "./types";
-import { fetchZones } from "./zones";
+import { fetchZones, findRunTicks, type RunTicks } from "./zones";
+import type { ReplayData } from "./wasm/bhop_replay_viewer_wasm";
 
 const loadMarks: { name: string; at: number }[] = [];
 function mark(name: string) {
@@ -69,6 +70,15 @@ const previewView = mat4.create();
 const previewPos = new Float32Array(3);
 const previewAngles = new Float32Array(2);
 
+// Header postframes unreliable; derive end from time.
+function headerRunTicks(replay: ReplayData): RunTicks | null {
+  const start = replay.preframes();
+  const end = start + Math.round(replay.time() * replay.tick_rate());
+  if (start === 0 || replay.time() <= 0) return null;
+  if (end <= start || end > replay.tick_count()) return null;
+  return { start, end };
+}
+
 function onPreview(tick: number | null) {
   previewTick = tick;
   if (tick === null) renderedPreviewTick = null;
@@ -88,6 +98,7 @@ function renderPreview() {
 // Reactive state exposed to child components
 const playbackState = shallowRef<PlaybackState>({
   tick: 0,
+  exactTick: 0,
   position: new Float32Array(3),
   angles: new Float32Array(2),
   buttons: 0,
@@ -100,6 +111,7 @@ const playbackState = shallowRef<PlaybackState>({
   tickRate: 100,
   time: 0,
 });
+const runTicks = ref<RunTicks | null>(null);
 const isFreecam = ref(false);
 const showStats = ref(false);
 const showSettings = ref(false);
@@ -209,7 +221,8 @@ async function initViewer() {
   stepLabel.value = "Parsing map...";
   await waitForNextPaint();
   await renderer.loadBSP(bspBytes, props.mapName, mark);
-  renderer.setZones(await zonesPromise);
+  const zones = await zonesPromise;
+  renderer.setZones(zones);
 
   currentStep.value = 5;
   stepLabel.value = "Downloading replay...";
@@ -234,6 +247,7 @@ async function initViewer() {
     replay.time(),
   );
   camera = new Camera(canvas.value);
+  runTicks.value = headerRunTicks(replay) ?? findRunTicks(zones, replay.positions(), replay.flags_array(), replay.tick_count());
 
   playbackRef.value = playbackEngine;
   cameraRef.value = camera;
@@ -329,6 +343,7 @@ function close() {
       :show-info="showInfo"
       :map-name="mapName"
       :time="time ?? null"
+      :run-ticks="runTicks"
     />
 
     <!-- Controls -->
@@ -337,6 +352,7 @@ function close() {
       ref="controlsRef"
       :playback="playbackRef"
       :camera="cameraRef"
+      :run-ticks="runTicks"
       @close="close"
       @toggle-stats="showStats = !showStats"
       @toggle-settings="showSettings = !showSettings"

@@ -13,6 +13,7 @@ export const FL_DUCKING = 1 << 1;
 
 export interface PlaybackState {
   tick: number;
+  exactTick: number;
   position: Float32Array;   // [x, y, z]
   angles: Float32Array;     // [pitch, yaw]
   buttons: number;
@@ -67,6 +68,7 @@ export class PlaybackEngine {
 
     this.state = {
       tick: 0,
+      exactTick: 0,
       position: new Float32Array(3),
       angles: new Float32Array(2),
       buttons: 0,
@@ -207,6 +209,7 @@ export class PlaybackEngine {
     const speed = Math.sqrt(dx * dx + dy * dy) * this.tickRate;
 
     this.state.tick = clamped;
+    this.state.exactTick = clamped + Math.max(0, Math.min(1, this.spareTime / tickPeriod));
     this.state.buttons = curButtons;
     this.state.flags = curFlags;
     this.state.eyeHeight = eyeHeight;
