@@ -1,7 +1,22 @@
 {
-  "extends": "@vue/tsconfig/tsconfig.dom.json",
   "include": ["src/**/*", "src/**/*.vue"],
   "compilerOptions": {
-    "noEmit": true
+    "noEmit": true,
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "resolveJsonModule": true,
+    "allowImportingTsExtensions": true,
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "skipLibCheck": true,
+    "strict": true,
+    "noImplicitThis": true,
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+
+    "target": "ES2022",
+    "experimentalDecorators": true,
+    "useDefineForClassFields": false,
+    "verbatimModuleSyntax": false,
+    "isolatedModules": true
   }
 }

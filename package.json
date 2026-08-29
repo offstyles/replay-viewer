@@ -8,7 +8,8 @@
   },
   "types": "./src/index.ts",
   "files": [
-    "src"
+    "src",
+    "tsconfig.json"
   ],
   "scripts": {
     "type-check": "vue-tsc --noEmit"
