@@ -2,21 +2,21 @@
 import { computed } from 'vue'
 import type { PlaybackState } from './playback'
 import { IN_FORWARD, IN_BACK, IN_MOVELEFT, IN_MOVERIGHT, IN_JUMP, IN_DUCK } from './playback'
-import type { Time } from '@/types/Time'
-import dateTimeFormats from '@/utils/dateTimeFormats'
+import type { ReplayTime } from './types'
+import { formatRunTime } from './formatRunTime'
 
 const props = defineProps<{
   state: PlaybackState
   isFreecam: boolean
   showInfo: boolean
   mapName: string
-  time: Time | null
+  time: ReplayTime | null
 }>()
 
 const speed = computed(() => Math.round(props.state.speed).toString())
 
 const runTime = computed(() =>
-  props.time && props.time.time > 0 ? dateTimeFormats.time(props.time.time) : null,
+  props.time && props.time.time > 0 ? formatRunTime(props.time.time) : null,
 )
 
 function isPressed(flag: number): boolean {

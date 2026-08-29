@@ -12,7 +12,7 @@ import { mat4 } from "gl-matrix";
 import { fetchWithProgress } from "./fetchWithProgress";
 import { decompressBz2 } from "./decompressBz2";
 import ViewerSettings from "./ViewerSettings.vue";
-import type { Time } from "@/types/Time";
+import type { ReplayTime } from "./types";
 
 const loadMarks: { name: string; at: number }[] = [];
 function mark(name: string) {
@@ -39,7 +39,7 @@ const props = defineProps<{
   mapName: string;
   replayId: string;
   show: boolean;
-  time?: Time | null;
+  time?: ReplayTime | null;
 }>();
 
 const emit = defineEmits(["close"]);
