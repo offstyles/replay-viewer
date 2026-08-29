@@ -19,4 +19,6 @@ The consumer needs:
 - Tailwind scanning this package's sources (`@source "../../node_modules/@offstyles/replay-viewer/src";`) and a `main-*` color palette
 - `/api/replay?id=` endpoint
 
+Pass `:compare-replay-id` to show time and speed diffs against another replay of the same map in the HUD.
+
 The `src/wasm` directory is the wasm-pack output of [bhop-replay-viewer](https://github.com/offstyles/bhop-replay-viewer).

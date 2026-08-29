@@ -15,6 +15,7 @@ import ViewerSettings from "./ViewerSettings.vue";
 import type { ReplayTime } from "./types";
 import { fetchZones, findRunTicks, type RunTicks } from "./zones";
 import type { ReplayData } from "./wasm/bhop_replay_viewer_wasm";
+import { ReplayDiff, type DiffSample } from "./replayDiff";
 
 const loadMarks: { name: string; at: number }[] = [];
 function mark(name: string) {
@@ -42,6 +43,7 @@ const props = defineProps<{
   replayId: string;
   show: boolean;
   time?: ReplayTime | null;
+  compareReplayId?: string | null;
 }>();
 
 const emit = defineEmits(["close"]);
@@ -66,6 +68,8 @@ let renderer: NoclipRenderer | null = null;
 let playbackEngine: PlaybackEngine | null = null;
 let camera: Camera | null = null;
 let animFrameId: number | null = null;
+let replayDiff: ReplayDiff | null = null;
+const diffSample: DiffSample = { time: 0, speed: 0 };
 let previewTick: number | null = null;
 let renderedPreviewTick: number | null = null;
 const previewView = mat4.create();
@@ -243,6 +247,26 @@ async function initViewer() {
 
   isLoading.value = false;
   startRenderLoop();
+
+  if (props.compareReplayId) {
+    loadCompareReplay(wasm, props.compareReplayId, zones).catch((err) => {
+      console.warn("Failed to load comparison replay:", err);
+    });
+  }
+}
+
+async function loadCompareReplay(
+  wasm: typeof import("./wasm/bhop_replay_viewer_wasm"),
+  replayId: string,
+  zones: Awaited<ReturnType<typeof fetchZones>>,
+) {
+  const url = `${apiBaseUrl}/replay?id=${encodeURIComponent(replayId)}`;
+  const buf = await fetchWithProgress(url, () => {}, "include");
+  if (!playbackEngine) return;
+  const replay = wasm.parse_replay(new Uint8Array(buf));
+  const ticks = headerRunTicks(replay) ?? findRunTicks(zones, replay.positions(), replay.flags_array(), replay.tick_count());
+  if (!ticks) return;
+  replayDiff = new ReplayDiff(replay.positions(), replay.tick_rate(), ticks);
 }
 
 const STATS_UPDATE_INTERVAL_MS = 1000 / 60;
@@ -264,7 +288,8 @@ function startRenderLoop() {
     const camPos = camera.getPosition();
     renderer.render(camera.viewMatrix, playbackEngine.state.position, camPos, camera.isFreecam);
 
-    hudRef.value?.update(playbackEngine.state);
+    replayDiff?.sample(playbackEngine.state.position, diffSample);
+    hudRef.value?.update(playbackEngine.state, replayDiff ? diffSample : null);
     controlsRef.value?.updateScrubber();
     isFreecam.value = camera.isFreecam;
 
@@ -297,6 +322,7 @@ function cleanup() {
     renderer = null;
   }
   playbackEngine = null;
+  replayDiff = null;
   playbackRef.value = null;
   cameraRef.value = null;
   isLoading.value = true;

@@ -5,6 +5,7 @@ import { IN_FORWARD, IN_BACK, IN_MOVELEFT, IN_MOVERIGHT, IN_JUMP, IN_DUCK } from
 import type { ReplayTime } from './types'
 import { formatRunTime } from './formatRunTime'
 import type { RunTicks } from './zones'
+import type { DiffSample } from './replayDiff'
 
 const props = defineProps<{
   isFreecam: boolean
@@ -20,6 +21,8 @@ const runTime = computed(() =>
 
 const timerEl = ref<HTMLElement | null>(null)
 const speedEl = ref<HTMLElement | null>(null)
+const timerDiffEl = ref<HTMLElement | null>(null)
+const speedDiffEl = ref<HTMLElement | null>(null)
 const keyDuck = ref<HTMLElement | null>(null)
 const keyW = ref<HTMLElement | null>(null)
 const keyA = ref<HTMLElement | null>(null)
@@ -29,21 +32,46 @@ const keyJump = ref<HTMLElement | null>(null)
 
 let lastTimer = ''
 let lastSpeed = ''
+let lastTimerDiff = ''
+let lastSpeedDiff = ''
 let lastButtons = -1
 
-function timerText(state: PlaybackState): string {
-  if (!props.runTicks) return ''
+function elapsedTime(state: PlaybackState): number {
+  if (!props.runTicks) return 0
   const { start, end } = props.runTicks
   const elapsed = Math.max(state.exactTick - start, 0) / state.tickRate
   const finalTime = state.time > 0 ? state.time : (end - start) / state.tickRate
-  return formatRunTime(Math.min(elapsed, finalTime))
+  return Math.min(elapsed, finalTime)
+}
+
+function timerText(state: PlaybackState): string {
+  return props.runTicks ? formatRunTime(elapsedTime(state)) : ''
+}
+
+function setDiff(el: HTMLElement | null, text: string, ahead: boolean) {
+  if (!el) return
+  el.textContent = text
+  el.classList.toggle('ahead', text !== '' && ahead)
+  el.classList.toggle('behind', text !== '' && !ahead)
+}
+
+function timerDiffText(state: PlaybackState, diff: DiffSample | null): string {
+  if (!diff || !props.runTicks || state.exactTick < props.runTicks.start) return ''
+  const delta = elapsedTime(state) - diff.time
+  return (delta >= 0 ? '+' : '-') + formatRunTime(Math.abs(delta))
+}
+
+function speedDiffText(state: PlaybackState, diff: DiffSample | null): string {
+  if (!diff || !props.runTicks || state.exactTick < props.runTicks.start) return ''
+  const delta = Math.round(state.speed - diff.speed)
+  return (delta >= 0 ? '+' : '') + delta
 }
 
 function setKey(el: HTMLElement | null, buttons: number, flag: number) {
   el?.classList.toggle('active', (buttons & flag) !== 0)
 }
 
-function update(state: PlaybackState) {
+function update(state: PlaybackState, diff: DiffSample | null) {
   const timer = timerText(state)
   if (timer !== lastTimer) {
     lastTimer = timer
@@ -53,6 +81,16 @@ function update(state: PlaybackState) {
   if (speed !== lastSpeed) {
     lastSpeed = speed
     if (speedEl.value) speedEl.value.textContent = speed
+  }
+  const timerDiff = timerDiffText(state, diff)
+  if (timerDiff !== lastTimerDiff) {
+    lastTimerDiff = timerDiff
+    setDiff(timerDiffEl.value, timerDiff, timerDiff.startsWith('-'))
+  }
+  const speedDiff = speedDiffText(state, diff)
+  if (speedDiff !== lastSpeedDiff) {
+    lastSpeedDiff = speedDiff
+    setDiff(speedDiffEl.value, speedDiff, speedDiff.startsWith('+'))
   }
   if (state.buttons !== lastButtons) {
     lastButtons = state.buttons
@@ -86,11 +124,15 @@ defineExpose({ update })
     </div>
 
     <!-- Timer + speed -->
-    <div class="hud-live absolute bottom-24 left-1/2 -translate-x-1/2 w-48 drop-shadow-lg tabular-nums flex flex-col items-center gap-1">
-      <div v-if="runTicks" ref="timerEl" class="text-lg font-semibold leading-none" />
+    <div class="hud-live absolute bottom-24 left-1/2 -translate-x-1/2 w-80 drop-shadow-lg tabular-nums flex flex-col items-center gap-1">
+      <div v-if="runTicks" class="relative text-lg font-semibold leading-none">
+        <span ref="timerEl" />
+        <span ref="timerDiffEl" class="diff absolute left-full top-1/2 -translate-y-1/2 ml-2 text-xs font-semibold whitespace-nowrap" />
+      </div>
       <div class="relative text-xl font-bold leading-none">
         <span ref="speedEl" />
         <span class="absolute left-full top-1/2 -translate-y-1/2 ml-1 text-xs font-normal text-gray-400 whitespace-nowrap">u/s</span>
+        <span ref="speedDiffEl" class="diff absolute left-full top-1/2 -translate-y-1/2 ml-8 text-xs font-semibold whitespace-nowrap" />
       </div>
     </div>
 
@@ -119,6 +161,13 @@ defineExpose({ update })
 <style scoped>
 .hud-live {
   contain: layout style paint;
+}
+
+.diff.ahead {
+  color: #4ade80;
+}
+.diff.behind {
+  color: #f87171;
 }
 
 .key-panel {
