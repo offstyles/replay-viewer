@@ -7,7 +7,8 @@ import StatsOverlay from "./StatsOverlay.vue";
 import type { NoclipRenderer } from "./noclipRenderer";
 import { DEFAULT_RENDER_SETTINGS, type RenderSettings } from "./renderSettings";
 import { PlaybackEngine, type PlaybackState } from "./playback";
-import { Camera } from "./camera";
+import { Camera, followViewMatrix } from "./camera";
+import { mat4 } from "gl-matrix";
 import { fetchWithProgress } from "./fetchWithProgress";
 import { decompressBz2 } from "./decompressBz2";
 import ViewerSettings from "./ViewerSettings.vue";
@@ -61,6 +62,27 @@ let renderer: NoclipRenderer | null = null;
 let playbackEngine: PlaybackEngine | null = null;
 let camera: Camera | null = null;
 let animFrameId: number | null = null;
+let previewTick: number | null = null;
+let renderedPreviewTick: number | null = null;
+const previewView = mat4.create();
+const previewPos = new Float32Array(3);
+const previewAngles = new Float32Array(2);
+
+function onPreview(tick: number | null) {
+  previewTick = tick;
+  if (tick === null) renderedPreviewTick = null;
+}
+
+function renderPreview() {
+  if (!renderer || !playbackEngine || previewTick === null || previewTick === renderedPreviewTick) return;
+  const target = controlsRef.value?.previewCanvas;
+  if (!target) return;
+  const eyeHeight = playbackEngine.getTickView(previewTick, previewPos, previewAngles);
+  previewPos[2] += eyeHeight;
+  followViewMatrix(previewView, previewPos, previewAngles);
+  renderer.renderPreview(previewView, target);
+  renderedPreviewTick = previewTick;
+}
 
 // Reactive state exposed to child components
 const playbackState = shallowRef<PlaybackState>({
@@ -228,6 +250,7 @@ function startRenderLoop() {
 
     playbackEngine.update(dt);
     camera.update(dt, playbackEngine.state);
+    renderPreview();
     const camPos = camera.getPosition();
     renderer.render(camera.viewMatrix, playbackEngine.state.position, camPos, camera.isFreecam);
 
@@ -312,6 +335,7 @@ function close() {
       @toggle-stats="showStats = !showStats"
       @toggle-settings="showSettings = !showSettings"
       @toggle-info="showInfo = !showInfo"
+      @preview="onPreview"
     />
 
     <!-- Stats overlay -->

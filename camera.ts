@@ -1,6 +1,24 @@
 import { mat4, vec3 } from 'gl-matrix';
 import type { PlaybackState } from './playback';
 
+export function followViewMatrix(out: mat4, eyePos: vec3 | Float32Array, angles: Float32Array): mat4 {
+  // Source Engine angles: yaw is angles[1], pitch is angles[0]
+  const yaw = angles[1] * Math.PI / 180;
+  const pitch = -angles[0] * Math.PI / 180;
+
+  const cosPitch = Math.cos(pitch);
+  const fx = Math.cos(yaw) * cosPitch;
+  const fy = Math.sin(yaw) * cosPitch;
+  const fz = Math.sin(pitch);
+
+  return mat4.lookAt(
+    out,
+    eyePos as vec3,
+    [eyePos[0] + fx, eyePos[1] + fy, eyePos[2] + fz],
+    [0, 0, 1],
+  );
+}
+
 export class Camera {
   readonly viewMatrix = mat4.create();
   private freecam = false;
@@ -77,22 +95,7 @@ export class Camera {
     this.pos[0] = state.position[0];
     this.pos[1] = state.position[1];
     this.pos[2] = state.position[2] + state.eyeHeight;
-
-    // Source Engine angles: yaw is angles[1], pitch is angles[0]
-    const yaw = state.angles[1] * Math.PI / 180;
-    const pitch = -state.angles[0] * Math.PI / 180;
-
-    const cosPitch = Math.cos(pitch);
-    const fx = Math.cos(yaw) * cosPitch;
-    const fy = Math.sin(yaw) * cosPitch;
-    const fz = Math.sin(pitch);
-
-    mat4.lookAt(
-      this.viewMatrix,
-      this.pos as unknown as vec3,
-      [this.pos[0] + fx, this.pos[1] + fy, this.pos[2] + fz],
-      [0, 0, 1],
-    );
+    followViewMatrix(this.viewMatrix, this.pos, state.angles);
   }
 
   private updateFreecam(dt: number): void {

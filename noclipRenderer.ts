@@ -122,6 +122,8 @@ class StubInputManager {
     public button = 0;
 }
 
+const EMPTY_VEC3 = new Float32Array(3);
+
 export class NoclipRenderer {
     private gl: WebGL2RenderingContext;
     private swapChain: GfxSwapChain;
@@ -273,6 +275,18 @@ export class NoclipRenderer {
         viewerInput.backbufferHeight = this.canvas.height;
 
         this.renderer.render(this.device, viewerInput);
+    }
+
+    public renderPreview(viewMatrix: mat4, target: HTMLCanvasElement): void {
+        if (!this.renderer || !this.renderContext) return;
+        this.render(viewMatrix, EMPTY_VEC3, EMPTY_VEC3, false);
+        const ctx = target.getContext("2d");
+        if (!ctx) return;
+        const src = this.canvas;
+        const scale = Math.max(target.width / src.width, target.height / src.height);
+        const sw = target.width / scale;
+        const sh = target.height / scale;
+        ctx.drawImage(src, (src.width - sw) / 2, (src.height - sh) / 2, sw, sh, 0, 0, target.width, target.height);
     }
 
     private resize(): void {

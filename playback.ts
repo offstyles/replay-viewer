@@ -112,6 +112,12 @@ export class PlaybackEngine {
     return (flags & FL_DUCKING) !== 0 ? 46 : 64;
   }
 
+  getTickView(tick: number, outPos: Float32Array, outAngles: Float32Array): number {
+    this.getTickPos(tick, outPos);
+    this.getTickAngles(tick, outAngles);
+    return this.getEyeHeight(this.getTickFlags(tick));
+  }
+
   setTick(tick: number): void {
     this.tick = tick;
     this.spareTime = 0;

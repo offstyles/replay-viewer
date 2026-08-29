@@ -8,12 +8,22 @@ const props = defineProps<{
   camera: Camera
 }>()
 
-const emit = defineEmits(['close', 'toggle-stats', 'toggle-settings', 'toggle-info'])
+const emit = defineEmits<{
+  close: []
+  'toggle-stats': []
+  'toggle-settings': []
+  'toggle-info': []
+  preview: [tick: number | null]
+}>()
 
 const isScrubbing = ref(false)
 const scrubberValue = ref(0)
 const isPlaying = ref(true)
 const speedFocused = ref(false)
+
+const previewCanvas = ref<HTMLCanvasElement | null>(null)
+const previewTick = ref<number | null>(null)
+const previewX = ref(0)
 
 // Auto-fade: hide controls after 3s of no mouse movement
 const isVisible = ref(true)
@@ -38,19 +48,16 @@ function onMouseMove() {
   showControls()
 }
 
-const timeDisplay = computed(() => {
-  const elapsed = scrubberValue.value / props.playback.state.tickRate
+function formatTicks(ticks: number) {
+  const elapsed = ticks / props.playback.state.tickRate
   const mins = Math.floor(elapsed / 60)
   const secs = elapsed - mins * 60
   return `${mins}:${secs < 10 ? '0' : ''}${secs.toFixed(1)}`
-})
+}
 
-const totalTimeDisplay = computed(() => {
-  const total = (props.playback.state.totalTicks - 1) / props.playback.state.tickRate
-  const mins = Math.floor(total / 60)
-  const secs = total - mins * 60
-  return `${mins}:${secs < 10 ? '0' : ''}${secs.toFixed(1)}`
-})
+const timeDisplay = computed(() => formatTicks(scrubberValue.value))
+const totalTimeDisplay = computed(() => formatTicks(props.playback.state.totalTicks - 1))
+const previewTimeDisplay = computed(() => formatTicks(previewTick.value ?? 0))
 
 function togglePlay() {
   props.playback.togglePlaying()
@@ -66,6 +73,23 @@ function onScrubInput(e: Event) {
 function onScrubChange() {
   isScrubbing.value = false
   resetFadeTimer()
+}
+
+function onScrubHover(e: MouseEvent) {
+  const el = e.currentTarget as HTMLInputElement
+  const rect = el.getBoundingClientRect()
+  const frac = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width))
+  const tick = Math.round(frac * (props.playback.state.totalTicks - 1))
+  previewX.value = Math.max(128, Math.min(window.innerWidth - 128, rect.left + frac * rect.width))
+  if (tick !== previewTick.value) {
+    previewTick.value = tick
+    emit('preview', tick)
+  }
+}
+
+function onScrubLeave() {
+  previewTick.value = null
+  emit('preview', null)
 }
 
 function onSpeedChange(e: Event) {
@@ -125,7 +149,7 @@ function updateScrubber() {
   isPlaying.value = props.playback.isPlaying
 }
 
-defineExpose({ updateScrubber })
+defineExpose({ updateScrubber, previewCanvas })
 </script>
 
 <template>
@@ -134,6 +158,20 @@ defineExpose({ updateScrubber })
     :class="isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-2 pointer-events-none'"
     @mouseenter="showControls"
   >
+    <div
+      v-show="previewTick !== null"
+      class="absolute bottom-full mb-1 -translate-x-1/2 pointer-events-none flex flex-col items-center gap-1"
+      :style="{ left: `${previewX}px` }"
+    >
+      <canvas
+        ref="previewCanvas"
+        width="240"
+        height="135"
+        class="rounded border border-main-400/50 bg-black shadow-lg"
+      />
+      <span class="text-xs text-white font-mono bg-main-800/90 px-1.5 rounded">{{ previewTimeDisplay }}</span>
+    </div>
+
     <!-- Controls bar background -->
     <div class="bg-main-800/90 backdrop-blur-sm border-t border-main-400/30 px-4 py-2.5">
       <!-- Scrubber row -->
@@ -146,6 +184,8 @@ defineExpose({ updateScrubber })
           :value="scrubberValue"
           @input="onScrubInput"
           @change="onScrubChange"
+          @mousemove="onScrubHover"
+          @mouseleave="onScrubLeave"
           class="scrubber flex-1 h-1 appearance-none bg-main-300/40 rounded outline-none cursor-pointer"
         />
         <span class="text-xs text-gray-400 font-mono w-12 shrink-0">{{ totalTimeDisplay }}</span>
