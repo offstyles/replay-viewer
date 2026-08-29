@@ -5,7 +5,7 @@ import ArrayBufferSlice from "../ArrayBufferSlice.js";
 import BitMap from "../BitMap.js";
 import { Camera, CameraController, computeViewSpaceDepthFromWorldSpacePoint } from "../Camera.js";
 import { DataFetcher } from "../DataFetcher.js";
-import { AABB, Frustum, Plane } from "../Geometry.js";
+import { AABB, Frustum, Plane, IntersectionState } from "../Geometry.js";
 import { fullscreenMegaState } from "../gfx/helpers/GfxMegaStateDescriptorHelpers.js";
 import { setBackbufferDescSimple, standardFullClearRenderPassDescriptor } from "../gfx/helpers/RenderGraphHelpers.js";
 import { GfxBindingLayoutDescriptor, GfxBlendFactor, GfxBlendMode, GfxBuffer, GfxBufferUsage, GfxChannelWriteMask, GfxClipSpaceNearZ, GfxCompareMode, GfxCullMode, GfxDevice, GfxFormat, GfxInputLayout, GfxInputLayoutBufferDescriptor, GfxMipFilterMode, GfxRenderPass, GfxSampler, GfxSamplerFormatKind, GfxTexFilterMode, GfxTexture, GfxTextureDimension, GfxTextureUsage, GfxVertexAttributeDescriptor, GfxVertexBufferFrequency, GfxWrapMode, GfxProgram, GfxVertexBufferDescriptor, GfxIndexBufferDescriptor, GfxBufferFrequencyHint } from "../gfx/platform/GfxPlatform.js";
@@ -844,16 +844,20 @@ export class BSPRenderer {
             this.staticPropRenderers[i].movement(renderContext);
     }
 
-    public gatherLiveSets(liveFaceSet: IndexSet | null, liveLeafSet: IndexSet | null, view: SourceEngineView, nodeid: number = 0, modelMatrix: ReadonlyMat4 | null = null): void {
+    public gatherLiveSets(liveFaceSet: IndexSet | null, liveLeafSet: IndexSet | null, view: SourceEngineView, nodeid: number = 0, modelMatrix: ReadonlyMat4 | null = null, frustumInside: boolean = false): void {
         if (nodeid >= 0) {
             // node
             const node = this.bsp.nodelist[nodeid];
 
-            if (!view.frustum.contains(transformAABB(node.bbox, modelMatrix)))
-                return;
+            if (!frustumInside) {
+                const state = view.frustum.intersect(transformAABB(node.bbox, modelMatrix));
+                if (state === IntersectionState.Outside)
+                    return;
+                frustumInside = state === IntersectionState.Inside;
+            }
 
-            this.gatherLiveSets(liveFaceSet, liveLeafSet, view, node.child0, modelMatrix);
-            this.gatherLiveSets(liveFaceSet, liveLeafSet, view, node.child1, modelMatrix);
+            this.gatherLiveSets(liveFaceSet, liveLeafSet, view, node.child0, modelMatrix, frustumInside);
+            this.gatherLiveSets(liveFaceSet, liveLeafSet, view, node.child1, modelMatrix, frustumInside);
 
             // Node surfaces are func_detail meshes, but they appear to also be in leaves... we probably don't need them.
         } else {
@@ -864,7 +868,7 @@ export class BSPRenderer {
             if (!view.pvs.getBit(leaf.cluster))
                 return;
 
-            if (!view.frustum.contains(transformAABB(leaf.bbox, modelMatrix)))
+            if (!frustumInside && !view.frustum.contains(transformAABB(leaf.bbox, modelMatrix)))
                 return;
 
             if (liveFaceSet !== null)

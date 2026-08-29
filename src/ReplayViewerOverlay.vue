@@ -6,7 +6,7 @@ import ViewerControls from "./ViewerControls.vue";
 import StatsOverlay from "./StatsOverlay.vue";
 import type { NoclipRenderer } from "./noclipRenderer";
 import { DEFAULT_RENDER_SETTINGS, type RenderSettings } from "./renderSettings";
-import { PlaybackEngine, type PlaybackState } from "./playback";
+import { PlaybackEngine } from "./playback";
 import { Camera, followViewMatrix } from "./camera";
 import { mat4 } from "gl-matrix";
 import { fetchWithProgress } from "./fetchWithProgress";
@@ -59,6 +59,7 @@ const totalSteps = 6;
 
 const canvas = ref<HTMLCanvasElement | null>(null);
 const controlsRef = ref<InstanceType<typeof ViewerControls> | null>(null);
+const hudRef = ref<InstanceType<typeof ViewerHUD> | null>(null);
 
 // Non-reactive engine references (not tracked by Vue)
 let renderer: NoclipRenderer | null = null;
@@ -96,22 +97,6 @@ function renderPreview() {
   renderedPreviewTick = previewTick;
 }
 
-// Reactive state exposed to child components
-const playbackState = shallowRef<PlaybackState>({
-  tick: 0,
-  exactTick: 0,
-  position: new Float32Array(3),
-  angles: new Float32Array(2),
-  buttons: 0,
-  flags: 0,
-  eyeHeight: 64,
-  speed: 0,
-  isPlaying: true,
-  playbackRate: 1.0,
-  totalTicks: 0,
-  tickRate: 100,
-  time: 0,
-});
 const runTicks = ref<RunTicks | null>(null);
 const isFreecam = ref(false);
 const showStats = ref(false);
@@ -260,8 +245,12 @@ async function initViewer() {
   startRenderLoop();
 }
 
+const STATS_UPDATE_INTERVAL_MS = 1000 / 60;
+
 function startRenderLoop() {
   let lastTime = performance.now();
+  let lastStatsUpdate = lastTime;
+  let statsFrames = 0;
 
   function frame(now: number) {
     if (!renderer || !playbackEngine || !camera) return;
@@ -275,15 +264,18 @@ function startRenderLoop() {
     const camPos = camera.getPosition();
     renderer.render(camera.viewMatrix, playbackEngine.state.position, camPos, camera.isFreecam);
 
-    playbackState.value = { ...playbackEngine.state };
+    hudRef.value?.update(playbackEngine.state);
+    controlsRef.value?.updateScrubber();
     isFreecam.value = camera.isFreecam;
 
-    if (showStats.value) {
-      statsFrameTime.value = dt * 1000;
-      statsFps.value = Math.round(1 / dt);
+    statsFrames++;
+    if (showStats.value && now - lastStatsUpdate >= STATS_UPDATE_INTERVAL_MS) {
+      const elapsed = now - lastStatsUpdate;
+      statsFrameTime.value = elapsed / statsFrames;
+      statsFps.value = Math.round((statsFrames * 1000) / elapsed);
+      lastStatsUpdate = now;
+      statsFrames = 0;
     }
-
-    controlsRef.value?.updateScrubber();
 
     animFrameId = requestAnimationFrame(frame);
   }
@@ -339,7 +331,7 @@ function close() {
     <!-- HUD -->
     <ViewerHUD
       v-if="!isLoading && !errorMessage"
-      :state="playbackState"
+      ref="hudRef"
       :is-freecam="isFreecam"
       :show-info="showInfo"
       :map-name="mapName"

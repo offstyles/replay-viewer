@@ -19,7 +19,9 @@ const emit = defineEmits<{
 }>()
 
 const isScrubbing = ref(false)
-const scrubberValue = ref(0)
+const scrubberEl = ref<HTMLInputElement | null>(null)
+const timeEl = ref<HTMLElement | null>(null)
+let lastScrubTick = -1
 const isPlaying = ref(true)
 const speedFocused = ref(false)
 
@@ -57,7 +59,6 @@ function formatTicks(ticks: number) {
   return `${mins}:${secs < 10 ? '0' : ''}${secs.toFixed(1)}`
 }
 
-const timeDisplay = computed(() => formatTicks(scrubberValue.value))
 const totalTimeDisplay = computed(() => formatTicks(props.playback.state.totalTicks - 1))
 const previewTimeDisplay = computed(() => formatTicks(previewTick.value ?? 0))
 
@@ -151,8 +152,11 @@ onUnmounted(() => {
 })
 
 function updateScrubber() {
-  if (!isScrubbing.value) {
-    scrubberValue.value = props.playback.state.tick
+  const tick = props.playback.state.tick
+  if (!isScrubbing.value && tick !== lastScrubTick) {
+    lastScrubTick = tick
+    if (scrubberEl.value) scrubberEl.value.value = String(tick)
+    if (timeEl.value) timeEl.value.textContent = formatTicks(tick)
   }
   isPlaying.value = props.playback.isPlaying
 }
@@ -184,7 +188,7 @@ defineExpose({ updateScrubber, previewCanvas })
     <div class="bg-main-800/90 backdrop-blur-sm border-t border-main-400/30 px-4 py-2.5">
       <!-- Scrubber row -->
       <div class="flex items-center gap-3 mb-2">
-        <span class="text-xs text-gray-400 font-mono w-12 text-right shrink-0">{{ timeDisplay }}</span>
+        <span ref="timeEl" class="text-xs text-gray-400 font-mono w-12 text-right shrink-0" />
         <div class="relative flex-1 flex items-center">
           <template v-if="runTicks">
             <div
@@ -199,10 +203,10 @@ defineExpose({ updateScrubber, previewCanvas })
             />
           </template>
           <input
+            ref="scrubberEl"
             type="range"
             min="0"
             :max="playback.state.totalTicks - 1"
-            :value="scrubberValue"
             @input="onScrubInput"
             @change="onScrubChange"
             @mousemove="onScrubHover"

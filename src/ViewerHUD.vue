@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import type { PlaybackState } from './playback'
 import { IN_FORWARD, IN_BACK, IN_MOVELEFT, IN_MOVERIGHT, IN_JUMP, IN_DUCK } from './playback'
 import type { ReplayTime } from './types'
@@ -7,7 +7,6 @@ import { formatRunTime } from './formatRunTime'
 import type { RunTicks } from './zones'
 
 const props = defineProps<{
-  state: PlaybackState
   isFreecam: boolean
   showInfo: boolean
   mapName: string
@@ -15,23 +14,58 @@ const props = defineProps<{
   runTicks: RunTicks | null
 }>()
 
-const speed = computed(() => Math.round(props.state.speed).toString())
-
 const runTime = computed(() =>
   props.time && props.time.time > 0 ? formatRunTime(props.time.time) : null,
 )
 
-const timer = computed(() => {
-  if (!props.runTicks) return null
-  const { start, end } = props.runTicks
-  const elapsed = Math.max(props.state.exactTick - start, 0) / props.state.tickRate
-  const finalTime = props.state.time > 0 ? props.state.time : (end - start) / props.state.tickRate
-  return formatRunTime(Math.min(elapsed, finalTime))
-})
+const timerEl = ref<HTMLElement | null>(null)
+const speedEl = ref<HTMLElement | null>(null)
+const keyDuck = ref<HTMLElement | null>(null)
+const keyW = ref<HTMLElement | null>(null)
+const keyA = ref<HTMLElement | null>(null)
+const keyS = ref<HTMLElement | null>(null)
+const keyD = ref<HTMLElement | null>(null)
+const keyJump = ref<HTMLElement | null>(null)
 
-function isPressed(flag: number): boolean {
-  return (props.state.buttons & flag) !== 0
+let lastTimer = ''
+let lastSpeed = ''
+let lastButtons = -1
+
+function timerText(state: PlaybackState): string {
+  if (!props.runTicks) return ''
+  const { start, end } = props.runTicks
+  const elapsed = Math.max(state.exactTick - start, 0) / state.tickRate
+  const finalTime = state.time > 0 ? state.time : (end - start) / state.tickRate
+  return formatRunTime(Math.min(elapsed, finalTime))
 }
+
+function setKey(el: HTMLElement | null, buttons: number, flag: number) {
+  el?.classList.toggle('active', (buttons & flag) !== 0)
+}
+
+function update(state: PlaybackState) {
+  const timer = timerText(state)
+  if (timer !== lastTimer) {
+    lastTimer = timer
+    if (timerEl.value) timerEl.value.textContent = timer
+  }
+  const speed = Math.round(state.speed).toString()
+  if (speed !== lastSpeed) {
+    lastSpeed = speed
+    if (speedEl.value) speedEl.value.textContent = speed
+  }
+  if (state.buttons !== lastButtons) {
+    lastButtons = state.buttons
+    setKey(keyDuck.value, state.buttons, IN_DUCK)
+    setKey(keyW.value, state.buttons, IN_FORWARD)
+    setKey(keyA.value, state.buttons, IN_MOVELEFT)
+    setKey(keyS.value, state.buttons, IN_BACK)
+    setKey(keyD.value, state.buttons, IN_MOVERIGHT)
+    setKey(keyJump.value, state.buttons, IN_JUMP)
+  }
+}
+
+defineExpose({ update })
 </script>
 
 <template>
@@ -52,37 +86,41 @@ function isPressed(flag: number): boolean {
     </div>
 
     <!-- Timer + speed -->
-    <div class="absolute bottom-24 left-1/2 -translate-x-1/2 drop-shadow-lg tabular-nums flex flex-col items-center gap-1">
-      <div v-if="timer" class="text-lg font-semibold leading-none">{{ timer }}</div>
+    <div class="hud-live absolute bottom-24 left-1/2 -translate-x-1/2 w-48 drop-shadow-lg tabular-nums flex flex-col items-center gap-1">
+      <div v-if="runTicks" ref="timerEl" class="text-lg font-semibold leading-none" />
       <div class="relative text-xl font-bold leading-none">
-        {{ speed }}
+        <span ref="speedEl" />
         <span class="absolute left-full top-1/2 -translate-y-1/2 ml-1 text-xs font-normal text-gray-400 whitespace-nowrap">u/s</span>
       </div>
     </div>
 
     <!-- Key display: ShavitTimer-style layout -->
-    <div class="absolute bottom-[88px] left-2 key-panel">
+    <div class="hud-live absolute bottom-[88px] left-2 key-panel">
       <!-- Duck + W row -->
       <div class="flex gap-[3px] mb-[3px]">
-        <div class="key-box key-wide" :class="{ active: isPressed(IN_DUCK) }">Duck</div>
-        <div class="key-box" :class="{ active: isPressed(IN_FORWARD) }">W</div>
+        <div ref="keyDuck" class="key-box key-wide">Duck</div>
+        <div ref="keyW" class="key-box">W</div>
         <div class="key-box key-placeholder" />
       </div>
       <!-- A S D row -->
       <div class="flex gap-[3px] mb-[3px]">
-        <div class="key-box" :class="{ active: isPressed(IN_MOVELEFT) }">A</div>
-        <div class="key-box" :class="{ active: isPressed(IN_BACK) }">S</div>
-        <div class="key-box" :class="{ active: isPressed(IN_MOVERIGHT) }">D</div>
+        <div ref="keyA" class="key-box">A</div>
+        <div ref="keyS" class="key-box">S</div>
+        <div ref="keyD" class="key-box">D</div>
       </div>
       <!-- Jump row (full width) -->
       <div class="flex">
-        <div class="key-box flex-1" :class="{ active: isPressed(IN_JUMP) }">Jump</div>
+        <div ref="keyJump" class="key-box flex-1">Jump</div>
       </div>
     </div>
   </div>
 </template>
 
 <style scoped>
+.hud-live {
+  contain: layout style paint;
+}
+
 .key-panel {
   background: rgba(0, 0, 0, 0.25);
   padding: 6px;
@@ -101,7 +139,6 @@ function isPressed(flag: number): boolean {
   background: rgba(0, 0, 0, 0.5);
   border-radius: 3px;
   border: 1px solid transparent;
-  transition: background-color 0.05s, color 0.05s, border-color 0.05s;
 }
 .key-box.key-wide {
   width: 60px;
