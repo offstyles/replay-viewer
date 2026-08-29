@@ -1711,13 +1711,22 @@ export class BSPFile {
 
         // Which cluster each face lives in, for the sort and merge below. Faces reachable
         // from more than one leaf take the first; faces in no leaf get -1.
+        const NOVIS_CELL_SIZE = 2048;
+        const leafMergeKey = (leaf: BSPLeaf): number => {
+            if (this.visibility !== null)
+                return leaf.cluster;
+            const cx = Math.floor((leaf.bbox.min[0] + leaf.bbox.max[0]) * 0.5 / NOVIS_CELL_SIZE);
+            const cy = Math.floor((leaf.bbox.min[1] + leaf.bbox.max[1]) * 0.5 / NOVIS_CELL_SIZE);
+            const cz = Math.floor((leaf.bbox.min[2] + leaf.bbox.max[2]) * 0.5 / NOVIS_CELL_SIZE);
+            return ((cx & 0xFF) << 16) | ((cy & 0xFF) << 8) | (cz & 0xFF);
+        };
         const faceToCluster = new Int32Array(numfaces).fill(-1);
         for (let i = 0; i < this.leaflist.length; i++) {
             const leaf = this.leaflist[i];
             for (let j = 0; j < leaf.faces.length; j++) {
                 const faceIdx = leaf.faces[j];
                 if (faceToCluster[faceIdx] === -1)
-                    faceToCluster[faceIdx] = leaf.cluster;
+                    faceToCluster[faceIdx] = leafMergeKey(leaf);
             }
         }
 
@@ -1728,7 +1737,7 @@ export class BSPFile {
                 continue;
             const leaf = this.queryPoint(face.centroid);
             if (leaf !== null)
-                faceToCluster[face.index] = leaf.cluster;
+                faceToCluster[face.index] = leafMergeKey(leaf);
         }
 
         // Sort by cluster first, then texinfo. Sorting by material alone let the merge
