@@ -14,7 +14,6 @@
     "type-check": "vue-tsc --noEmit"
   },
   "dependencies": {
-    "crc-32": "^1.2.2",
     "lzma1": "^0.3.0",
     "pako": "^2.1.0"
   },
