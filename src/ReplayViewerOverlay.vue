@@ -47,6 +47,7 @@ const props = defineProps<{
 const emit = defineEmits(["close"]);
 
 const apiBaseUrl = "/api";
+const fastdlBaseUrl = "https://main.fastdl.me/maps";
 
 // State
 const isLoading = ref(true);
@@ -182,7 +183,7 @@ async function initViewer() {
   currentStep.value = 2;
   stepLabel.value = "Downloading map...";
   progress.value = 0;
-  const bspUrl = `${apiBaseUrl}/bsp?map=${encodeURIComponent(props.mapName)}`;
+  const bspUrl = `${fastdlBaseUrl}/${encodeURIComponent(props.mapName)}.bsp.bz2`;
   let bz2Data: ArrayBuffer | null = await fetchWithProgress(bspUrl, (received, total) => {
     if (total) {
       progress.value = received / total;

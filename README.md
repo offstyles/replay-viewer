@@ -17,6 +17,6 @@ The consumer needs:
 - `@vitejs/plugin-vue` and `vite-plugin-wasm` in its Vite config
 - `optimizeDeps.exclude: ['@offstyles/replay-viewer']` so Vite compiles the `.vue` sources instead of prebundling them
 - Tailwind scanning this package's sources (`@source "../../node_modules/@offstyles/replay-viewer/src";`) and a `main-*` color palette
-- `/api/bsp?map=` and `/api/replay?id=` endpoints
+- `/api/replay?id=` endpoint
 
 The `src/wasm` directory is the wasm-pack output of [bhop-replay-viewer](https://github.com/offstyles/bhop-replay-viewer).
