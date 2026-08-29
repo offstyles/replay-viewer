@@ -100,6 +100,15 @@ function commit() {
           class="accent-green-700"
         />
       </label>
+      <label class="flex items-center justify-between cursor-pointer">
+        <span class="text-gray-300">Show zones</span>
+        <input
+          type="checkbox"
+          v-model="local.showZones"
+          @change="commit"
+          class="accent-green-700"
+        />
+      </label>
     </div>
   </div>
 </template>

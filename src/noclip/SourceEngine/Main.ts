@@ -1803,6 +1803,7 @@ export class SourceRenderer implements SceneGfx {
     public renderHelper: GfxRenderHelper;
     public skyboxRenderer: SkyboxRenderer | null = null;
     public bspRenderers: BSPRenderer[] = [];
+    public prepareToRenderExtra: ((renderInstManager: GfxRenderInstManager, view: SourceEngineView) => void) | null = null;
 
     private textureMapping = nArray(5, () => new TextureMapping());
     private bindingMapping: string[] = [LateBindingTexture.Camera, LateBindingTexture.FramebufferColor, LateBindingTexture.FramebufferDepth, LateBindingTexture.WaterReflection, LateBindingTexture.ProjectedLightDepth];
@@ -1999,6 +2000,8 @@ export class SourceRenderer implements SceneGfx {
             (renderContext.currentPointCamera as point_camera).preparePasses(this);
 
         this.mainViewRenderer.prepareToRender(this, null);
+        if (this.prepareToRenderExtra !== null)
+            this.prepareToRenderExtra(this.renderHelper.renderInstManager, this.mainViewRenderer.mainView);
 
         // Reflection is only supported on the first BSP renderer (maybe we should just kill the concept of having multiple...)
         // waterSurfaceVisible was filled in by the main view prepare just above.

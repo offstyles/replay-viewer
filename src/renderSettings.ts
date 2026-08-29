@@ -6,6 +6,7 @@ export interface RenderSettings {
     antialiasing: AntialiasingSetting;
     disableFog: boolean;
     fullbright: boolean;
+    showZones: boolean;
 }
 
 export const DEFAULT_RENDER_SETTINGS: RenderSettings = {
@@ -14,4 +15,5 @@ export const DEFAULT_RENDER_SETTINGS: RenderSettings = {
     antialiasing: 'msaa4',
     disableFog: false,
     fullbright: false,
+    showZones: true,
 };

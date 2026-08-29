@@ -27,6 +27,8 @@ import {
 import type { SceneContext } from "./noclip/SceneBase.js";
 import type { ViewerRenderInput } from "./noclip/viewer.js";
 import { DEFAULT_RENDER_SETTINGS, type AntialiasingSetting, type RenderSettings } from "./renderSettings";
+import { ZoneRenderer } from "./zoneRenderer";
+import type { Zone } from "./zones";
 
 export type { RenderSettings } from "./renderSettings";
 
@@ -142,10 +144,17 @@ export class NoclipRenderer {
     private lastTime = this.startTime;
 
     private settings: RenderSettings = { ...DEFAULT_RENDER_SETTINGS };
+    private zoneRenderer: ZoneRenderer | null = null;
+    private zones: Zone[] = [];
 
     public setSettings(settings: RenderSettings): void {
         this.settings = { ...settings };
         this.applySettingsToContext();
+    }
+
+    public setZones(zones: Zone[]): void {
+        this.zones = zones;
+        this.zoneRenderer?.setZones(zones);
     }
 
     public isAutoExposureSupported(): boolean {
@@ -222,6 +231,13 @@ export class NoclipRenderer {
             initialSceneTime: 0,
         };
         this.renderer = new SourceRenderer(sceneContext, this.renderContext);
+        this.zoneRenderer = new ZoneRenderer(this.renderContext.renderCache);
+        this.zoneRenderer.setZones(this.zones);
+        this.renderer.prepareToRenderExtra = (renderInstManager, view) => {
+            if (!this.settings.showZones) return;
+            const pixelsPerUnitAtDist1 = this.canvas.height / (2 * Math.tan(this.camera.fovY / 2));
+            this.zoneRenderer!.prepareToRender(renderInstManager, view, this.renderer!.bspRenderers[0].bsp, pixelsPerUnitAtDist1);
+        };
 
         // bspBytes came from wasm-bindgen's .slice() copy, so it already owns
         // a fresh, full ArrayBuffer at offset 0. Wrap it directly — copying

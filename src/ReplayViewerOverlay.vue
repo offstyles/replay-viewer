@@ -13,6 +13,7 @@ import { fetchWithProgress } from "./fetchWithProgress";
 import { decompressBz2 } from "./decompressBz2";
 import ViewerSettings from "./ViewerSettings.vue";
 import type { ReplayTime } from "./types";
+import { fetchZones } from "./zones";
 
 const loadMarks: { name: string; at: number }[] = [];
 function mark(name: string) {
@@ -161,6 +162,10 @@ async function initViewer() {
   const replayUrl = `${apiBaseUrl}/replay?id=${encodeURIComponent(props.replayId)}`;
   const replayBufPromise = fetchWithProgress(replayUrl, () => {}, "include");
   replayBufPromise.catch(() => {});
+  const zonesPromise = fetchZones(props.mapName).catch((err) => {
+    console.warn("Failed to fetch zones:", err);
+    return [];
+  });
 
   currentStep.value = 2;
   stepLabel.value = "Downloading map...";
@@ -204,6 +209,7 @@ async function initViewer() {
   stepLabel.value = "Parsing map...";
   await waitForNextPaint();
   await renderer.loadBSP(bspBytes, props.mapName, mark);
+  renderer.setZones(await zonesPromise);
 
   currentStep.value = 5;
   stepLabel.value = "Downloading replay...";
