@@ -231,6 +231,8 @@ export class NoclipRenderer {
         return this.device.queryLimits().occlusionQueriesRecommended;
     }
 
+    private wasFullbright = false;
+
     private applySettingsToContext(): void {
         if (this.renderContext === null) return;
         const autoExposure = this.settings.autoExposure && this.isAutoExposureSupported();
@@ -241,9 +243,12 @@ export class NoclipRenderer {
         if (this.settings.fullbright) {
             this.renderContext.enableAutoExposure = false;
             this.renderContext.toneMapParams.toneMapScale = 4.0;
-        } else if (!autoExposure) {
+        } else if (!autoExposure || this.wasFullbright) {
+            // Snap to neutral when leaving fullbright; auto-exposure would only
+            // crawl back from 4.0 at the eye-adaptation rate.
             this.renderContext.toneMapParams.toneMapScale = 1.0;
         }
+        this.wasFullbright = this.settings.fullbright;
     }
 
     constructor(private canvas: HTMLCanvasElement) {
