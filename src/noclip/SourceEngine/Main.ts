@@ -559,6 +559,12 @@ export class BSPModelRenderer {
             const entityParams = this.entity !== null ? this.entity.materialParams : null;
             materialInstance.entityParams = entityParams;
 
+            // Brush entities (func_wall, func_brush, func_door...) with a
+            // translucent rendermode have no $translucent in their VMT; feed
+            // the mode before init() since blend state is baked in initStatic.
+            if (this.entity !== null && this.entity.rendermode > 0)
+                materialInstance.paramSetNumber('$rendermode', this.entity.rendermode);
+
             // We don't have vertex colors on BSP surfaces.
             materialInstance.hasVertexColorInput = false;
 

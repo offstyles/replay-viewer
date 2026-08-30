@@ -1364,7 +1364,9 @@ export class Material_Generic extends BaseMaterial {
         }
 
         this.shaderInstance.setDefineBool('USE_MODULATIONCOLOR_COLOR', true);
-        this.shaderInstance.setDefineBool('USE_MODULATIONCOLOR_ALPHA', !this.wantsLightmap);
+        // The engine applies render alpha (renderamt via $alpha) to lightmapped
+        // shaders too; $alpha defaults to 1.0 so world geometry is unchanged.
+        this.shaderInstance.setDefineBool('USE_MODULATIONCOLOR_ALPHA', true);
 
         if (this.hasVertexColorInput && (this.paramGetBoolean('$vertexcolor') || this.paramGetBoolean('$vertexalpha')))
             this.shaderInstance.setDefineBool('USE_VERTEX_COLOR', true);
@@ -1406,13 +1408,13 @@ export class Material_Generic extends BaseMaterial {
                 this.setAlphaBlendMode(this.megaStateFlags, AlphaBlendMode.Glow);
                 // TODO(jstpierre): Once we support glow traces, re-enable this.
                 // this.megaStateFlags.depthCompare = GfxCompareMode.Always;
-            } else if (renderMode === RenderMode.TransAdd) {
+            } else if (renderMode === RenderMode.TransAdd || renderMode === RenderMode.TransAddFrameBlend || renderMode === RenderMode.TransAddAlphaAdd) {
                 this.setAlphaBlendMode(this.megaStateFlags, AlphaBlendMode.Add);
             } else if (renderMode === RenderMode.TransTexture) {
                 this.setAlphaBlendMode(this.megaStateFlags, AlphaBlendMode.Blend);
             } else {
-                // Haven't seen this render mode yet.
-                debugger;
+                // TransColor, TransAlpha and the rest blend by render alpha.
+                this.setAlphaBlendMode(this.megaStateFlags, AlphaBlendMode.Blend);
             }
         } else {
             let isTranslucent = false;
