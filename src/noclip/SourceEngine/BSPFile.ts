@@ -1639,28 +1639,29 @@ export class BSPFile {
                 // Padding.
                 idx += 0x02;
             } else if (leafambientindex.byteLength === 0) {
-                // Intermediate leafambient version.
-                assert(leafambientlighting.byteLength !== 0);
-                assert(leafambientlightingVersion !== 1);
+                if (leafambientlighting.byteLength !== 0) {
+                    // Intermediate leafambient version.
+                    assert(leafambientlightingVersion !== 1);
 
-                // We only have one ambient cube sample, in the middle of the leaf.
-                const ambientCube: Color[] = [];
+                    // We only have one ambient cube sample, in the middle of the leaf.
+                    const ambientCube: Color[] = [];
 
-                for (let j = 0; j < 6; j++) {
-                    const ambientSampleColorIdx = (i * 6 + j) * 0x04;
-                    const exp = leafambientlighting.getUint8(ambientSampleColorIdx + 0x03);
-                    const r = unpackColorRGBExp32(leafambientlighting.getUint8(ambientSampleColorIdx + 0x00), exp) * 255.0;
-                    const g = unpackColorRGBExp32(leafambientlighting.getUint8(ambientSampleColorIdx + 0x01), exp) * 255.0;
-                    const b = unpackColorRGBExp32(leafambientlighting.getUint8(ambientSampleColorIdx + 0x02), exp) * 255.0;
-                    ambientCube.push(colorNewFromRGBA(r, g, b));
+                    for (let j = 0; j < 6; j++) {
+                        const ambientSampleColorIdx = (i * 6 + j) * 0x04;
+                        const exp = leafambientlighting.getUint8(ambientSampleColorIdx + 0x03);
+                        const r = unpackColorRGBExp32(leafambientlighting.getUint8(ambientSampleColorIdx + 0x00), exp) * 255.0;
+                        const g = unpackColorRGBExp32(leafambientlighting.getUint8(ambientSampleColorIdx + 0x01), exp) * 255.0;
+                        const b = unpackColorRGBExp32(leafambientlighting.getUint8(ambientSampleColorIdx + 0x02), exp) * 255.0;
+                        ambientCube.push(colorNewFromRGBA(r, g, b));
+                    }
+
+                    const x = lerp(bboxMinX, bboxMaxX, 0.5);
+                    const y = lerp(bboxMinY, bboxMaxY, 0.5);
+                    const z = lerp(bboxMinZ, bboxMaxZ, 0.5);
+                    const pos = vec3.fromValues(x, y, z);
+
+                    ambientLightSamples.push({ ambientCube, pos });
                 }
-
-                const x = lerp(bboxMinX, bboxMaxX, 0.5);
-                const y = lerp(bboxMinY, bboxMaxY, 0.5);
-                const z = lerp(bboxMinZ, bboxMaxZ, 0.5);
-                const pos = vec3.fromValues(x, y, z);
-
-                ambientLightSamples.push({ ambientCube, pos });
 
                 // Padding.
                 idx += 0x02;
