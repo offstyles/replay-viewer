@@ -211,6 +211,7 @@ export class NoclipRenderer {
     private settings: RenderSettings = { ...DEFAULT_RENDER_SETTINGS };
     private zoneRenderer: ZoneRenderer | null = null;
     private zones: Zone[] = [];
+    private wasFullbright = false;
 
     public setSettings(settings: RenderSettings): void {
         this.settings = { ...settings };
@@ -241,9 +242,12 @@ export class NoclipRenderer {
         if (this.settings.fullbright) {
             this.renderContext.enableAutoExposure = false;
             this.renderContext.toneMapParams.toneMapScale = 4.0;
-        } else if (!autoExposure) {
+        } else if (!autoExposure || this.wasFullbright) {
+            // Snap to neutral when leaving fullbright; auto-exposure would only
+            // crawl back from 4.0 at the eye-adaptation rate.
             this.renderContext.toneMapParams.toneMapScale = 1.0;
         }
+        this.wasFullbright = this.settings.fullbright;
     }
 
     constructor(private canvas: HTMLCanvasElement) {
