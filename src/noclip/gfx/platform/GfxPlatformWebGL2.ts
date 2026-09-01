@@ -1139,7 +1139,8 @@ class GfxImplP_GL implements GfxSwapChain, GfxDevice {
             gl.enableVertexAttribArray(attr.location);
         }
 
-        gl.bindVertexArray(null);
+        // The raw binds above bypass _setVAO; restore the tracked binding.
+        gl.bindVertexArray(this._currentBoundVAO);
 
         const inputLayout: GfxInputLayoutP_GL = { _T: _T.InputLayout, ResourceUniqueId: this.getNextUniqueId(), vertexAttributeDescriptors, vertexBufferDescriptors, vao, vertexBufferFormats, indexBufferFormat, indexBufferType, indexBufferCompByteSize };
         if (this._resourceCreationTracker !== null)
@@ -2406,8 +2407,11 @@ class GfxImplP_GL implements GfxSwapChain, GfxDevice {
 
         // Attribute pointers and the element array binding live in the VAO, so an
         // unchanged input already has exactly the state we'd re-specify.
-        if (this._vertexInputMatchesCache(inputLayout_, vertexBuffers, indexBuffer))
+        if (this._vertexInputMatchesCache(inputLayout_, vertexBuffers, indexBuffer)) {
+            if (inputLayout_ !== null)
+                this._setVAO((inputLayout_ as GfxInputLayoutP_GL).vao);
             return;
+        }
 
         if (inputLayout_ !== null) {
             const inputLayout = inputLayout_ as GfxInputLayoutP_GL;
