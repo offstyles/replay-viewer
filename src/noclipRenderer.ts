@@ -211,6 +211,7 @@ export class NoclipRenderer {
     private settings: RenderSettings = { ...DEFAULT_RENDER_SETTINGS };
     private zoneRenderer: ZoneRenderer | null = null;
     private zones: Zone[] = [];
+    private wasFullbright = false;
 
     public setSettings(settings: RenderSettings): void {
         this.settings = { ...settings };
@@ -230,8 +231,6 @@ export class NoclipRenderer {
         // occlusionQueriesRecommended; honor it.
         return this.device.queryLimits().occlusionQueriesRecommended;
     }
-
-    private wasFullbright = false;
 
     private applySettingsToContext(): void {
         if (this.renderContext === null) return;
